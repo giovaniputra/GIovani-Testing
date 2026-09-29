@@ -5,10 +5,12 @@
   "main": "src/topSellingProduct.js",
   "type": "commonjs",
   "scripts": {
-    "top-seller": "node src/topSellingProduct.js"
+    "top-seller": "node src/topSellingProduct.js",
+    "db:test": "node src/db/testConnection.js"
   },
   "dependencies": {
     "amazon-sp-api": "^1.0.6",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "mssql": "^11.0.1"
   }
 }

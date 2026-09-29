@@ -1,0 +1,14 @@
+{
+  "name": "amazon-sp-api-top-seller",
+  "version": "1.0.0",
+  "description": "Connects to Amazon Selling Partner API and reports yesterday's top selling product by units ordered.",
+  "main": "src/topSellingProduct.js",
+  "type": "commonjs",
+  "scripts": {
+    "top-seller": "node src/topSellingProduct.js"
+  },
+  "dependencies": {
+    "amazon-sp-api": "^1.0.6",
+    "dotenv": "^16.4.5"
+  }
+}

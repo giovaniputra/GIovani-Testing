@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Garuda Chess</title>
+<style>
+  :root{--red:#ce1126;--white:#fff;--ink:#1a1a1a;--light:#f3e3c3;--dark:#b58863;--sel:#f6e05e;--mv:rgba(206,17,38,.55)}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Arial,sans-serif;background:#fafafa;color:var(--ink);display:flex;flex-direction:column;align-items:center;padding:16px}
+  h1{margin:0 0 4px;color:var(--red)}
+  #status{margin:8px 0;font-weight:bold;min-height:24px}
+  #board{display:grid;grid-template-columns:repeat(8,1fr);width:min(92vw,560px);aspect-ratio:1;border:4px solid var(--red)}
+  .sq{position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .sq.l{background:var(--light)}.sq.d{background:var(--dark)}
+  .sq.sel{background:var(--sel)}
+  .sq.mv::after{content:"";position:absolute;width:28%;height:28%;border-radius:50%;background:var(--mv)}
+  .sq.mv.cap::after{width:90%;height:90%;background:none;border:4px solid var(--mv)}
+  .sq.chk{background:#ff7b7b}
+  svg.p{width:92%;height:92%;pointer-events:none}
+  button{margin-top:10px;background:var(--red);color:#fff;border:0;padding:8px 16px;font-size:15px;cursor:pointer;border-radius:4px}
+  #legend{margin-top:14px;font-size:12px;max-width:560px;color:#444}
+</style>
+</head>
+<body>
+<h1>Garuda Chess</h1>
+<div>Timnas Indonesia edition &mdash; you are Merah (red), moving first.</div>
+<div id="status"></div>
+<div id="board"></div>
+<button id="reset">New game</button>
+<div id="legend"></div>
+<script>
+// Piece "faces": cartoon avatars of Timnas players (June 2026 squad), named on each piece.
+// Illustrations are generic cartoons, not photographs of the players.
+const ROSTER={
+  K:{name:'Idzes',no:4,hair:'#2b1b12',skin:'#f1c9a5'},
+  Q:{name:'Verdonk',no:3,hair:'#5a3a22',skin:'#f1c9a5'},
+  R:{name:'Baggott',no:5,hair:'#c9a24a',skin:'#f7d6b8'},
+  B:{name:'Walsh',no:2,hair:'#7a4a2a',skin:'#f1c9a5'},
+  N:{name:'Ridho',no:21,hair:'#111',skin:'#d9a273'},
+  P:{name:'Garuda',no:'',hair:'#111',skin:'#d9a273'}
+};
+const NAMES={K:'King',Q:'Queen',R:'Rook',B:'Bishop',N:'Knight',P:'Pawn'};
+const GLYPH={K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:''};
+
+function face(type,color){
+  const r=ROSTER[type], red=color==='w';
+  const jersey=red?'#ce1126':'#ffffff', trim=red?'#ffffff':'#ce1126', txt=red?'#fff':'#ce1126';
+  const ring=red?'#8a0b19':'#999';
+  return `<svg class="p" viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="46" fill="${jersey}" stroke="${ring}" stroke-width="3"/>
+    <path d="M14 82 Q50 62 86 82 A46 46 0 0 1 14 82Z" fill="${jersey}" stroke="${trim}" stroke-width="3"/>
+    <path d="M38 68 L50 78 L62 68" fill="none" stroke="${trim}" stroke-width="4"/>
+    <ellipse cx="50" cy="42" rx="19" ry="22" fill="${r.skin}"/>
+    <path d="M30 38 Q32 17 50 17 Q68 17 70 38 Q60 26 50 28 Q40 26 30 38Z" fill="${r.hair}"/>
+    <circle cx="43" cy="44" r="2.4" fill="#222"/><circle cx="57" cy="44" r="2.4" fill="#222"/>
+    <path d="M42 54 Q50 61 58 54" fill="none" stroke="#a33" stroke-width="2.2" stroke-linecap="round"/>
+    ${type==='K'?'<path d="M44 12 l3 6 3-6 3 6 3-6 -2 9h-8z" fill="#f2b705" stroke="#8a6500" stroke-width="1"/>':''}
+    ${type==='K'?'<text x="50" y="9" font-size="9" text-anchor="middle" fill="#8a6500" font-weight="bold">C</text>':''}
+    <text x="50" y="91" font-size="10" text-anchor="middle" font-weight="bold" fill="${txt}">${r.name.toUpperCase()}</text>
+    ${GLYPH[type]?`<text x="17" y="30" font-size="20" text-anchor="middle" fill="${txt}">${GLYPH[type]}</text>`:''}
+  </svg>`;
+}
+
+let b,turn,sel,moves,ep,castle,over;
+const el=document.getElementById('board'),st=document.getElementById('status');
+
+function init(){
+  const back='RNBQKBNR';
+  b=Array.from({length:8},()=>Array(8).fill(null));
+  for(let c=0;c<8;c++){
+    b[0][c]={t:back[c],c:'b'};b[1][c]={t:'P',c:'b'};
+    b[6][c]={t:'P',c:'w'};b[7][c]={t:back[c],c:'w'};
+  }
+  turn='w';sel=null;moves=[];ep=null;over=false;
+  castle={wK:true,wQ:true,bK:true,bQ:true};
+  render();
+}
+const inB=(r,c)=>r>=0&&r<8&&c>=0&&c<8;
+
+function pseudo(bd,r,c,epT,cs,withCastle=true){
+  const p=bd[r][c],out=[],o=p.c==='w'?'b':'w';
+  const add=(rr,cc,extra)=>{if(inB(rr,cc)&&(!bd[rr][cc]||bd[rr][cc].c===o))out.push({r:rr,c:cc,...extra})};
+  if(p.t==='P'){
+    const d=p.c==='w'?-1:1,start=p.c==='w'?6:1;
+    if(inB(r+d,c)&&!bd[r+d][c]){out.push({r:r+d,c});
+      if(r===start&&!bd[r+2*d][c])out.push({r:r+2*d,c,dbl:true});}
+    for(const dc of[-1,1]){
+      if(!inB(r+d,c+dc))continue;
+      if(bd[r+d][c+dc]&&bd[r+d][c+dc].c===o)out.push({r:r+d,c:c+dc});
+      else if(epT&&epT.r===r+d&&epT.c===c+dc)out.push({r:r+d,c:c+dc,ep:true});
+    }
+  }else if(p.t==='N'){
+    for(const[a,d]of[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]])add(r+a,c+d);
+  }else if(p.t==='K'){
+    for(let a=-1;a<=1;a++)for(let d=-1;d<=1;d++)if(a||d)add(r+a,c+d);
+    if(withCastle){
+      const row=p.c==='w'?7:0;
+      if(r===row&&c===4&&!attacked(bd,row,4,o)){
+        if(cs[p.c+'K']&&!bd[row][5]&&!bd[row][6]&&bd[row][7]&&bd[row][7].t==='R'&&!attacked(bd,row,5,o)&&!attacked(bd,row,6,o))out.push({r:row,c:6,castle:'K'});
+        if(cs[p.c+'Q']&&!bd[row][3]&&!bd[row][2]&&!bd[row][1]&&bd[row][0]&&bd[row][0].t==='R'&&!attacked(bd,row,3,o)&&!attacked(bd,row,2,o))out.push({r:row,c:2,castle:'Q'});
+      }
+    }
+  }else{
+    const dirs=[];
+    if(p.t!=='B')dirs.push([1,0],[-1,0],[0,1],[0,-1]);
+    if(p.t!=='R')dirs.push([1,1],[1,-1],[-1,1],[-1,-1]);
+    for(const[dr,dc]of dirs){
+      let rr=r+dr,cc=c+dc;
+      while(inB(rr,cc)){
+        if(bd[rr][cc]){if(bd[rr][cc].c===o)out.push({r:rr,c:cc});break}
+        out.push({r:rr,c:cc});rr+=dr;cc+=dc;
+      }
+    }
+  }
+  return out;
+}
+function attacked(bd,r,c,by){
+  for(let i=0;i<8;i++)for(let j=0;j<8;j++){
+    const p=bd[i][j];if(!p||p.c!==by)continue;
+    if(p.t==='P'){const d=p.c==='w'?-1:1;if(i+d===r&&Math.abs(j-c)===1)return true}
+    else if(pseudo(bd,i,j,null,{},false).some(m=>m.r===r&&m.c===c))return true;
+  }
+  return false;
+}
+function kingPos(bd,col){for(let i=0;i<8;i++)for(let j=0;j<8;j++)if(bd[i][j]&&bd[i][j].t==='K'&&bd[i][j].c===col)return[i,j]}
+function apply(bd,fr,fc,m){
+  const p=bd[fr][fc];bd[m.r][m.c]=p;bd[fr][fc]=null;
+  if(m.ep)bd[fr][m.c]=null;
+  if(m.castle==='K'){bd[m.r][5]=bd[m.r][7];bd[m.r][7]=null}
+  if(m.castle==='Q'){bd[m.r][3]=bd[m.r][0];bd[m.r][0]=null}
+  if(p.t==='P'&&(m.r===0||m.r===7))bd[m.r][m.c]={t:'Q',c:p.c};
+}
+function legal(r,c){
+  const p=b[r][c];
+  return pseudo(b,r,c,ep,castle).filter(m=>{
+    const t=b.map(row=>row.slice());apply(t,r,c,m);
+    const[kr,kc]=kingPos(t,p.c);
+    return !attacked(t,kr,kc,p.c==='w'?'b':'w');
+  });
+}
+function hasMoves(col){
+  for(let i=0;i<8;i++)for(let j=0;j<8;j++)if(b[i][j]&&b[i][j].c===col&&legal(i,j).length)return true;
+  return false;
+}
+function click(r,c){
+  if(over)return;
+  const m=sel&&moves.find(x=>x.r===r&&x.c===c);
+  if(m){
+    const[fr,fc]=sel,p=b[fr][fc];
+    apply(b,fr,fc,m);
+    ep=m.dbl?{r:(fr+m.r)/2,c}:null;
+    if(p.t==='K'){castle[p.c+'K']=castle[p.c+'Q']=false}
+    if(p.t==='R'){if(fc===0)castle[p.c+'Q']=false;if(fc===7)castle[p.c+'K']=false}
+    if(m.r===0||m.r===7){if(m.c===0)castle[(m.r===7?'w':'b')+'Q']=false;if(m.c===7)castle[(m.r===7?'w':'b')+'K']=false}
+    turn=turn==='w'?'b':'w';sel=null;moves=[];
+  }else if(b[r][c]&&b[r][c].c===turn){sel=[r,c];moves=legal(r,c)}
+  else{sel=null;moves=[]}
+  render();
+}
+function render(){
+  const[kr,kc]=kingPos(b,turn),inChk=attacked(b,kr,kc,turn==='w'?'b':'w');
+  const can=hasMoves(turn),who=turn==='w'?'Merah (red)':'Putih (white)';
+  if(!can){over=true;st.textContent=inChk?`Skakmat! ${turn==='w'?'Putih':'Merah'} wins.`:'Stalemate — draw.'}
+  else st.textContent=`${who} to move${inChk?' — check!':''}`;
+  el.innerHTML='';
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+    const d=document.createElement('div');
+    d.className='sq '+((r+c)%2?'d':'l');
+    if(sel&&sel[0]===r&&sel[1]===c)d.classList.add('sel');
+    const mv=moves.find(x=>x.r===r&&x.c===c);
+    if(mv){d.classList.add('mv');if(b[r][c]||mv.ep)d.classList.add('cap')}
+    if(inChk&&r===kr&&c===kc)d.classList.add('chk');
+    const p=b[r][c];
+    if(p){d.innerHTML=face(p.t,p.c);d.title=NAMES[p.t]+' — '+ROSTER[p.t].name}
+    d.onclick=()=>click(r,c);
+    el.appendChild(d);
+  }
+}
+document.getElementById('legend').innerHTML='<b>Line-up:</b> '+
+  Object.keys(ROSTER).filter(k=>k!=='P').map(k=>`${NAMES[k]} = ${ROSTER[k].name}`).join(' · ')+' · Pawns = Garuda. Cartoon avatars inspired by the Timnas squad, not photographs.';
+document.getElementById('reset').onclick=init;
+init();
+</script>
+</body>
+</html>

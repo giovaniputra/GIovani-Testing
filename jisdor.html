@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JISDOR Tracker</title>
+<style>
+  :root{--ink:#141414;--mute:#717171;--line:#e6e6e6;--accent:#ce1126;--bg:#fafafa}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,Arial,sans-serif;background:var(--bg);color:var(--ink);padding:16px;display:flex;justify-content:center}
+  main{width:min(100%,900px)}
+  h1{margin:0 0 4px}
+  .sub{color:var(--mute);margin:0 0 16px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px}
+  .card b{display:block;font-size:28px}
+  .card span{color:var(--mute);font-size:13px}
+  .tabs{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+  button{border:1px solid var(--line);background:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit}
+  button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .chart{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;position:relative}
+  canvas{width:100%;height:320px;display:block}
+  #tip{position:absolute;pointer-events:none;background:var(--ink);color:#fff;padding:4px 8px;border-radius:4px;font-size:13px;display:none;white-space:nowrap}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);margin-top:16px}
+  th{background:var(--ink);color:#fff;text-align:left}
+  th,td{padding:8px 12px;font-size:14px}
+  tr+tr td{border-top:1px solid var(--line)}
+  .up{color:var(--accent)}.down{color:#1a7f37}
+  .note{color:var(--mute);font-size:12px;margin-top:12px}
+</style>
+</head>
+<body>
+<main>
+  <h1>JISDOR Tracker</h1>
+  <p class="sub">Kurs JISDOR (USD/IDR) — Bank Indonesia, 4 Nov 2025 – 3 Nov 2026</p>
+  <div class="cards">
+    <div class="card"><span>Kurs terakhir</span><b id="cur"></b><span id="curDate"></span></div>
+    <div class="card"><span>Tertinggi</span><b id="max"></b><span id="maxDate"></span></div>
+    <div class="card"><span>Terendah</span><b id="min"></b><span id="minDate"></span></div>
+    <div class="card"><span>Perubahan harian</span><b id="chg"></b><span id="chgDate"></span></div>
+  </div>
+  <div class="tabs" id="tabs"></div>
+  <div class="chart"><canvas id="c"></canvas><div id="tip"></div></div>
+  <table><thead><tr><th>Tanggal</th><th>Kurs (Rp/USD)</th><th>Perubahan</th></tr></thead><tbody id="rows"></tbody></table>
+  <p class="note">Sumber: <a href="https://www.bi.go.id/id/statistik/informasi-kurs/jisdor/default.aspx" target="_blank" rel="noopener">bi.go.id/JISDOR</a>, diambil 4 Nov 2026 (240 hari kerja). Untuk memperbarui, jalankan ulang pengambilan data dan ganti array <code>DATA</code>.</p>
+</main>
+<script>
+const DATA=[["2025-11-04",16724.0],["2025-11-05",16729.0],["2025-11-06",16707.0],["2025-11-07",16704.0],["2025-11-10",16666.0],["2025-11-11",16698.0],["2025-11-12",16722.0],["2025-11-13",16732.0],["2025-11-14",16710.0],["2025-11-17",16734.0],["2025-11-18",16760.0],["2025-11-19",16732.0],["2025-11-20",16742.0],["2025-11-21",16719.0],["2025-11-24",16709.0],["2025-11-25",16667.0],["2025-11-26",16673.0],["2025-11-27",16644.0],["2025-11-28",16661.0],["2025-12-01",16668.0],["2025-12-02",16632.0],["2025-12-03",16632.0],["2025-12-04",16646.0],["2025-12-05",16655.0],["2025-12-08",16688.0],["2025-12-09",16677.0],["2025-12-10",16688.0],["2025-12-11",16668.0],["2025-12-12",16652.0],["2025-12-15",16669.0],["2025-12-16",16693.0],["2025-12-17",16698.0],["2025-12-18",16722.0],["2025-12-19",16735.0],["2025-12-22",16773.0],["2025-12-23",16790.0],["2025-12-24",16767.0],["2025-12-29",16788.0],["2025-12-30",16782.0],["2025-12-31",16720.0],["2026-01-02",16725.0],["2026-01-05",16748.0],["2026-01-06",16762.0],["2026-01-07",16785.0],["2026-01-08",16801.0],["2026-01-09",16834.0],["2026-01-12",16853.0],["2026-01-13",16875.0],["2026-01-14",16871.0],["2026-01-15",16880.0],["2026-01-19",16935.0],["2026-01-20",16981.0],["2026-01-21",16963.0],["2026-01-22",16902.0],["2026-01-23",16838.0],["2026-01-26",16779.0],["2026-01-27",16801.0],["2026-01-28",16723.0],["2026-01-29",16786.0],["2026-01-30",16796.0],["2026-02-02",16800.0],["2026-02-03",16777.0],["2026-02-04",16775.0],["2026-02-05",16826.0],["2026-02-06",16887.0],["2026-02-09",16838.0],["2026-02-10",16799.0],["2026-02-11",16781.0],["2026-02-12",16826.0],["2026-02-13",16844.0],["2026-02-18",16884.0],["2026-02-19",16925.0],["2026-02-20",16885.0],["2026-02-23",16818.0],["2026-02-24",16830.0],["2026-02-25",16813.0],["2026-02-26",16758.0],["2026-02-27",16779.0],["2026-03-02",16848.0],["2026-03-03",16870.0],["2026-03-04",16911.0],["2026-03-05",16886.0],["2026-03-06",16919.0],["2026-03-09",16974.0],["2026-03-10",16879.0],["2026-03-11",16867.0],["2026-03-12",16899.0],["2026-03-13",16934.0],["2026-03-16",16990.0],["2026-03-17",16982.0],["2026-03-25",16905.0],["2026-03-26",16903.0],["2026-03-27",16957.0],["2026-03-30",16993.0],["2026-03-31",16999.0],["2026-04-01",17002.0],["2026-04-02",17015.0],["2026-04-06",17037.0],["2026-04-07",17092.0],["2026-04-08",17009.0],["2026-04-09",17082.0],["2026-04-10",17112.0],["2026-04-13",17122.0],["2026-04-14",17135.0],["2026-04-15",17141.0],["2026-04-16",17142.0],["2026-04-17",17189.0],["2026-04-20",17176.0],["2026-04-21",17142.0],["2026-04-22",17179.0],["2026-04-23",17308.0],["2026-04-24",17278.0],["2026-04-27",17227.0],["2026-04-28",17245.0],["2026-04-29",17324.0],["2026-04-30",17378.0],["2026-05-04",17368.0],["2026-05-05",17425.0],["2026-05-06",17405.0],["2026-05-07",17362.0],["2026-05-08",17375.0],["2026-05-11",17415.0],["2026-05-12",17514.0],["2026-05-13",17496.0],["2026-05-18",17666.0],["2026-05-19",17719.0],["2026-05-20",17685.0],["2026-05-21",17673.0],["2026-05-22",17717.0],["2026-05-25",17743.0],["2026-05-26",17789.0],["2026-05-29",17883.0],["2026-06-02",17863.0],["2026-06-03",17931.0],["2026-06-04",18039.0],["2026-06-05",18039.0],["2026-06-08",18171.0],["2026-06-09",18141.0],["2026-06-10",17971.0],["2026-06-11",17981.0],["2026-06-12",17921.0],["2026-06-15",17719.0],["2026-06-17",17753.0],["2026-06-18",17826.0],["2026-06-19",17826.0],["2026-06-22",17819.0],["2026-06-23",17868.0],["2026-06-24",17955.0],["2026-06-25",17942.0],["2026-06-26",17962.0],["2026-06-29",17856.0],["2026-06-30",17899.0],["2026-07-01",17961.0],["2026-07-02",17994.0],["2026-07-03",17960.0],["2026-07-06",17999.0],["2026-07-07",17988.0],["2026-07-08",18005.0],["2026-07-09",18090.0],["2026-07-10",18069.0],["2026-07-13",18131.0],["2026-07-14",18099.0],["2026-07-15",18064.0],["2026-07-16",18041.0],["2026-07-17",17944.0],["2026-07-20",17976.0],["2026-07-21",17909.0],["2026-07-22",17909.0],["2026-07-23",17915.0],["2026-07-24",17973.0],["2026-07-27",17995.0],["2026-07-28",18088.0],["2026-07-29",18087.0],["2026-07-30",18078.0],["2026-07-31",18058.0],["2026-08-03",17991.0],["2026-08-04",18037.0],["2026-08-05",17937.0],["2026-08-06",17919.0],["2026-08-07",17913.0],["2026-08-10",17795.0],["2026-08-11",17824.0],["2026-08-12",17876.0],["2026-08-13",17882.0],["2026-08-14",17836.0],["2026-08-18",17856.0],["2026-08-19",17844.0],["2026-08-20",17779.0],["2026-08-21",17705.0],["2026-08-24",17703.0],["2026-08-26",17717.0],["2026-08-27",17762.0],["2026-08-28",17703.0],["2026-08-31",17746.0],["2026-09-01",17727.0],["2026-09-02",17770.0],["2026-09-03",17689.0],["2026-09-04",17636.0],["2026-09-07",17653.0],["2026-09-08",17618.0],["2026-09-09",17552.0],["2026-09-10",17536.0],["2026-09-11",17611.0],["2026-09-14",17635.0],["2026-09-15",17687.0],["2026-09-16",17712.0],["2026-09-17",17753.0],["2026-09-18",17745.0],["2026-09-21",17813.0],["2026-09-22",17883.0],["2026-09-23",17803.0],["2026-09-24",17898.0],["2026-09-25",17917.0],["2026-09-28",17965.0],["2026-09-29",17998.0],["2026-09-30",17877.0],["2026-10-01",17937.0],["2026-10-02",17898.0],["2026-10-05",17917.0],["2026-10-06",17910.0],["2026-10-07",17880.0],["2026-10-08",17890.0],["2026-10-09",17884.0],["2026-10-12",17899.0],["2026-10-13",17930.0],["2026-10-14",17898.0],["2026-10-15",17948.0],["2026-10-16",18052.0],["2026-10-19",18050.0],["2026-10-20",18006.0],["2026-10-21",17986.0],["2026-10-22",18047.0],["2026-10-23",18069.0],["2026-10-26",18116.0],["2026-10-27",18139.0],["2026-10-28",18183.0],["2026-10-29",18128.0],["2026-10-30",18138.0],["2026-11-02",18161.0],["2026-11-03",18148.0]].map(([d,r])=>({d:new Date(d),r}));
+const f=r=>"Rp "+r.toLocaleString("id-ID"),fd=d=>d.toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"});
+const $=id=>document.getElementById(id),last=DATA[DATA.length-1],prev=DATA[DATA.length-2];
+const mx=DATA.reduce((a,b)=>b.r>=a.r?b:a),mn=DATA.reduce((a,b)=>b.r<=a.r?b:a);
+$("cur").textContent=f(last.r);$("curDate").textContent=fd(last.d);
+$("max").textContent=f(mx.r);$("maxDate").textContent=fd(mx.d);
+$("min").textContent=f(mn.r);$("minDate").textContent=fd(mn.d);
+const dd=last.r-prev.r;$("chg").textContent=(dd>0?"+":"")+dd.toLocaleString("id-ID");$("chgDate").textContent=fd(last.d);
+const RANGES=[["1 Tahun",0],["6 Bln",6],["3 Bln",3],["1 Bln",1]];let range=0;
+RANGES.forEach(([n,m])=>{const b=document.createElement("button");b.textContent=n;b.dataset.m=m;b.onclick=()=>{range=m;draw();render()};$("tabs").appendChild(b)});
+function sub(){if(!range)return DATA;const c=new Date(last.d);c.setMonth(c.getMonth()-range);return DATA.filter(p=>p.d>=c)}
+function render(){[...$("tabs").children].forEach(b=>b.classList.toggle("on",+b.dataset.m===range));
+ const v=sub(),idx=new Map(DATA.map((p,i)=>[p,i]));
+ $("rows").innerHTML=v.slice().reverse().map(p=>{const i=idx.get(p),ch=i?p.r-DATA[i-1].r:null;return '<tr><td>'+fd(p.d)+'</td><td>'+f(p.r)+'</td><td class="'+(ch>0?"up":ch<0?"down":"")+'">'+(ch==null?"–":(ch>0?"+":"")+ch.toLocaleString("id-ID"))+'</td></tr>'}).join("")}
+const cv=$("c"),tip=$("tip");let pts=[];
+function draw(){const dpr=devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext("2d");g.scale(dpr,dpr);
+ const v=sub(),L=64,R=12,T=12,B=26,t0=+v[0].d,t1=+v[v.length-1].d||t0+1;
+ const rs=v.map(p=>p.r),step=range&&range<=3?100:250,lo=Math.floor(Math.min(...rs)/step)*step-step,hi=Math.ceil(Math.max(...rs)/step)*step+step;
+ const X=t=>L+(t-t0)/(t1-t0||1)*(W-L-R),Y=r=>T+(hi-r)/(hi-lo)*(H-T-B);
+ g.font="12px system-ui";g.strokeStyle="#e6e6e6";g.fillStyle="#717171";g.textAlign="right";
+ for(let r=lo;r<=hi;r+=step){g.beginPath();g.moveTo(L,Y(r));g.lineTo(W-R,Y(r));g.stroke();g.fillText(r.toLocaleString("id-ID"),L-6,Y(r)+4)}
+ g.textAlign="center";const n=5;for(let i=0;i<=n;i++){const t=t0+(t1-t0)*i/n;g.fillText(new Date(t).toLocaleDateString("id-ID",{day:"numeric",month:"short"}),X(t),H-8)}
+ g.strokeStyle="#ce1126";g.lineWidth=2;g.beginPath();v.forEach((p,i)=>i?g.lineTo(X(+p.d),Y(p.r)):g.moveTo(X(+p.d),Y(p.r)));g.stroke();
+ pts=v.map(p=>({x:X(+p.d),y:Y(p.r),p}))}
+cv.onmousemove=e=>{const b=cv.getBoundingClientRect(),x=e.clientX-b.left,q=pts.reduce((a,c)=>Math.abs(c.x-x)<Math.abs(a.x-x)?c:a);
+ tip.style.display="block";tip.textContent=fd(q.p.d)+" · "+f(q.p.r);tip.style.left=Math.min(q.x+8,b.width-190)+"px";tip.style.top=(q.y-30)+"px"};
+cv.onmouseleave=()=>tip.style.display="none";addEventListener("resize",draw);draw();render();
+</script>
+</body>
+</html>

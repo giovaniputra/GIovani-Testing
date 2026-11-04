@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BI-Rate Tracker</title>
+<style>
+  :root{--ink:#141414;--mute:#717171;--line:#e6e6e6;--accent:#ce1126;--bg:#fafafa}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,Arial,sans-serif;background:var(--bg);color:var(--ink);padding:16px;display:flex;justify-content:center}
+  main{width:min(100%,900px)}
+  h1{margin:0 0 4px}
+  .sub{color:var(--mute);margin:0 0 16px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px}
+  .card b{display:block;font-size:28px}
+  .card span{color:var(--mute);font-size:13px}
+  .tabs{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+  button{border:1px solid var(--line);background:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit}
+  button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .chart{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;position:relative}
+  canvas{width:100%;height:320px;display:block}
+  #tip{position:absolute;pointer-events:none;background:var(--ink);color:#fff;padding:4px 8px;border-radius:4px;font-size:13px;display:none;white-space:nowrap}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);margin-top:16px}
+  th{background:var(--ink);color:#fff;text-align:left}
+  th,td{padding:8px 12px;font-size:14px}
+  tr+tr td{border-top:1px solid var(--line)}
+  .up{color:var(--accent)}.down{color:#1a7f37}
+  .note{color:var(--mute);font-size:12px;margin-top:12px}
+</style>
+</head>
+<body>
+<main>
+  <h1>BI-Rate Tracker</h1>
+  <p class="sub">Bank Indonesia policy rate (BI 7-Day Reverse Repo Rate), since Aug 2016</p>
+  <div class="cards">
+    <div class="card"><span>Latest rate in dataset</span><b id="cur"></b><span id="curDate"></span></div>
+    <div class="card"><span>Peak</span><b id="max"></b><span id="maxDate"></span></div>
+    <div class="card"><span>Lowest</span><b id="min"></b><span id="minDate"></span></div>
+    <div class="card"><span>Last change</span><b id="chg"></b><span id="chgDate"></span></div>
+  </div>
+  <div class="tabs" id="tabs"></div>
+  <div class="chart"><canvas id="c"></canvas><div id="tip"></div></div>
+  <table><thead><tr><th>Effective date</th><th>Rate</th><th>Change</th></tr></thead><tbody id="rows"></tbody></table>
+  <p class="note">Data is embedded from published Board of Governors decisions and stops at the last change recorded (Sep 2025). Later decisions are not included — verify against <a href="https://www.bi.go.id/en/statistik/indikator/BI-Rate.aspx" target="_blank" rel="noopener">bi.go.id</a> and edit the <code>DATA</code> array at the top of the script to update.</p>
+</main>
+<script>
+// [effective date, BI-Rate %] — one row per rate change. Edit/extend to update.
+const DATA=[
+["2016-08-19",5.25],["2016-09-22",5.00],["2016-10-20",4.75],["2017-08-18",4.50],["2017-09-22",4.25],
+["2018-05-17",4.50],["2018-05-31",4.75],["2018-06-29",5.25],["2018-08-15",5.50],["2018-09-27",5.75],["2018-11-15",6.00],
+["2019-07-18",5.75],["2019-08-22",5.50],["2019-09-19",5.25],["2019-10-24",5.00],
+["2020-02-20",4.75],["2020-03-19",4.50],["2020-06-18",4.25],["2020-07-16",4.00],["2020-11-19",3.75],
+["2021-02-18",3.50],
+["2022-08-23",3.75],["2022-09-22",4.25],["2022-10-20",4.75],["2022-11-17",5.25],["2022-12-22",5.50],
+["2023-01-19",5.75],["2023-10-19",6.00],
+["2024-04-24",6.25],["2024-09-18",6.00],
+["2025-01-15",5.75],["2025-05-21",5.50],["2025-07-16",5.25],["2025-08-20",5.00],["2025-09-17",4.75]
+].map(([d,r])=>({d:new Date(d),ds:d,r}));
+
+const f=r=>r.toFixed(2)+"%", fd=d=>d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
+const last=DATA[DATA.length-1], mx=DATA.reduce((a,b)=>b.r>=a.r?b:a), mn=DATA.reduce((a,b)=>b.r<=a.r?b:a);
+const prev=DATA[DATA.length-2], $=id=>document.getElementById(id);
+$("cur").textContent=f(last.r);$("curDate").textContent="since "+fd(last.d);
+$("max").textContent=f(mx.r);$("maxDate").textContent=fd(mx.d);
+$("min").textContent=f(mn.r);$("minDate").textContent=fd(mn.d);
+$("chg").textContent=(last.r-prev.r>0?"+":"")+((last.r-prev.r)*100).toFixed(0)+" bps";$("chgDate").textContent=fd(last.d);
+
+const RANGES=[["All",0],["10Y",10],["5Y",5],["3Y",3],["1Y",1]];
+let range=0;
+RANGES.forEach(([n,y])=>{const b=document.createElement("button");b.textContent=n;b.onclick=()=>{range=y;draw();render()};b.dataset.y=y;$("tabs").appendChild(b)});
+
+function view(){
+  if(!range)return DATA;
+  const cut=new Date();cut.setFullYear(cut.getFullYear()-range);
+  const out=DATA.filter(p=>p.d>=cut);
+  const before=DATA.filter(p=>p.d<cut).pop();
+  return before?[{...before,d:cut},...out]:out;
+}
+function render(){
+  [...$("tabs").children].forEach(b=>b.classList.toggle("on",+b.dataset.y===range));
+  const rows=DATA.map((p,i)=>({p,ch:i?(p.r-DATA[i-1].r)*100:null})).reverse();
+  const cut=range?(()=>{const c=new Date();c.setFullYear(c.getFullYear()-range);return c})():null;
+  $("rows").innerHTML=rows.filter(x=>!cut||x.p.d>=cut).map(({p,ch})=>`<tr><td>${fd(p.d)}</td><td>${f(p.r)}</td><td class="${ch>0?"up":ch<0?"down":""}">${ch==null?"–":(ch>0?"+":"")+ch.toFixed(0)+" bps"}</td></tr>`).join("");
+}
+
+const cv=$("c"),tip=$("tip");let pts=[];
+function draw(){
+  const dpr=devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;
+  cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext("2d");g.scale(dpr,dpr);
+  const v=view(),end=new Date(),L=44,R=12,T=12,B=26;
+  const t0=+v[0].d,t1=+end,lo=Math.floor(Math.min(...v.map(p=>p.r))*2)/2-.5,hi=Math.ceil(Math.max(...v.map(p=>p.r))*2)/2+.5;
+  const X=t=>L+(t-t0)/(t1-t0)*(W-L-R),Y=r=>T+(hi-r)/(hi-lo)*(H-T-B);
+  g.font="12px system-ui";g.strokeStyle="#e6e6e6";g.fillStyle="#717171";g.textAlign="right";
+  for(let r=lo;r<=hi+1e-9;r+=.5){g.beginPath();g.moveTo(L,Y(r));g.lineTo(W-R,Y(r));g.stroke();g.fillText(r.toFixed(1)+"%",L-6,Y(r)+4)}
+  g.textAlign="center";
+  const y0=new Date(t0).getFullYear(),y1=end.getFullYear(),step=Math.max(1,Math.ceil((y1-y0)/8));
+  for(let y=y0+1;y<=y1;y+=step)g.fillText(y,X(+new Date(y,0,1)),H-8);
+  g.strokeStyle="#ce1126";g.lineWidth=2;g.beginPath();
+  v.forEach((p,i)=>{if(i){g.lineTo(X(+p.d),Y(v[i-1].r))}else g.moveTo(X(+p.d),Y(p.r));g.lineTo(X(+p.d),Y(p.r))});
+  g.lineTo(X(t1),Y(v[v.length-1].r));g.stroke();
+  pts=v.map(p=>({x:X(+p.d),y:Y(p.r),p}));
+  g.fillStyle="#ce1126";pts.forEach(q=>{g.beginPath();g.arc(q.x,q.y,3,0,7);g.fill()});
+}
+cv.onmousemove=e=>{
+  const b=cv.getBoundingClientRect(),x=e.clientX-b.left;
+  const q=pts.reduce((a,c)=>Math.abs(c.x-x)<Math.abs(a.x-x)?c:a);
+  tip.style.display="block";tip.textContent=fd(q.p.d)+" · "+f(q.p.r);
+  tip.style.left=Math.min(q.x+8,b.width-150)+"px";tip.style.top=(q.y-30)+"px";
+};
+cv.onmouseleave=()=>tip.style.display="none";
+addEventListener("resize",draw);
+draw();render();
+</script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kurs Transaksi BI</title>
+<style>
+  :root{--ink:#141414;--mute:#717171;--line:#e6e6e6;--accent:#ce1126;--bg:#fafafa}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,Arial,sans-serif;background:var(--bg);color:var(--ink);padding:16px;display:flex;justify-content:center}
+  main{width:min(100%,900px)}
+  h1{margin:0 0 4px}.sub{color:var(--mute);margin:0 0 16px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+  .bar .sp{flex:1}
+  button,input{font:inherit;border:1px solid var(--line);background:#fff;padding:6px 12px;border-radius:6px}
+  button{cursor:pointer}.rf{background:var(--accent);color:#fff;border-color:var(--accent)}button:disabled{opacity:.6;cursor:wait}
+  #msg{font-size:13px;color:var(--mute);min-height:20px;margin-bottom:8px}.err{color:var(--accent)!important}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line)}
+  th{background:var(--ink);color:#fff;text-align:right}th:first-child,td:first-child{text-align:left}
+  th,td{padding:8px 12px;font-size:14px;text-align:right}tr+tr td{border-top:1px solid var(--line)}
+  td small{display:block;color:var(--mute);font-size:11px}
+  .up{color:var(--accent)}.down{color:#1a7f37}
+  .note{color:var(--mute);font-size:12px;margin-top:12px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Kurs Transaksi BI</h1>
+  <p class="sub" id="sub">Memuat…</p>
+  <div class="bar">
+    <button id="refresh" class="rf">⟳ Refresh dari bi.go.id</button>
+    <span class="sp"></span>
+    <input type="date" id="date"><button id="go">Cari tanggal</button>
+    <input type="search" id="q" placeholder="Filter mata uang (USD…)" size="18">
+  </div>
+  <div id="msg"></div>
+  <table><thead><tr><th>Mata uang</th><th>Nilai</th><th>Kurs Jual</th><th>Kurs Beli</th><th>Δ Jual</th></tr></thead><tbody id="rows"></tbody></table>
+  <p class="note">Sumber: <a href="https://www.bi.go.id/id/statistik/informasi-kurs/transaksi-bi/Default.aspx" target="_blank" rel="noopener">bi.go.id — Kurs Transaksi BI</a>. Δ Jual dibandingkan tanggal sebelumnya yang pernah diambil aplikasi ini. Refresh bisa memakan 10–60 detik.</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);let S=null;
+const n=x=>x.toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2});
+const fd=iso=>new Date(iso+"T00:00:00").toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+const msg=(t,e)=>{$("msg").textContent=t;$("msg").className=e?"err":""};
+function render(){
+  if(!S)return;const q=$("q").value.trim().toUpperCase();
+  $("sub").textContent="Kurs untuk "+fd(S.date)+(S.date!==S.updated?" (data terbaru di BI: "+fd(S.updated)+")":"");
+  $("date").value=S.date;
+  $("rows").innerHTML=S.rows.filter(r=>!q||r.code.includes(q)||(S.names[r.code]||"").includes(q)).map(r=>{
+    const d=r.dJual;return `<tr><td><b>${r.code}</b><small>${S.names[r.code]||""}</small></td><td>${n(r.nilai)}</td><td>${n(r.jual)}</td><td>${n(r.beli)}</td><td class="${d>0?"up":d<0?"down":""}">${d==null?"–":(d>0?"+":"")+n(d)}</td></tr>`}).join("");
+}
+async function call(url,opt,btn){btn.disabled=true;try{const r=await fetch(url,opt),j=await r.json();if(!r.ok)throw new Error(j.error||r.status);return j}finally{btn.disabled=false}}
+$("refresh").onclick=async()=>{msg("Mengambil data terbaru dari bi.go.id…");
+  try{S=await call("/api/refresh",{method:"POST"},$("refresh"));render();msg("Diperbarui "+new Date(S.fetchedAt).toLocaleString("id-ID")+" — data BI tanggal "+fd(S.updated)+".")}catch(e){msg("Gagal refresh: "+e.message,1)}};
+$("go").onclick=async()=>{const d=$("date").value;if(!d)return;msg("Mengambil kurs tanggal "+d+"…");
+  try{S=await call("/api/date?d="+d,{method:"POST"},$("go"));render();msg("")}catch(e){msg(e.message,1)}};
+$("q").oninput=render;
+msg("Memuat data dari bi.go.id (pertama kali bisa sampai 1 menit)…");
+fetch("/api/state").then(r=>r.json().then(j=>{if(!r.ok)throw new Error(j.error);S=j;render();msg("")})).catch(e=>{$("sub").textContent="";msg("Gagal memuat: "+e.message+" — pastikan dijalankan dengan: node server.js",1)});
+</script>
+</body>
+</html>

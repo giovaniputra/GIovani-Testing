@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Simulator Order WhatsApp</title>
+<style>
+/* Layout: kiri = chat toko (WhatsApp), kanan = meja admin internal. Satu halaman, dua sudut pandang. */
+:root{
+  --bg:#f3f2ef; --surface:#ffffff; --ink:#1b1c1a; --mute:#6c6f69; --line:#dedcd6;
+  --chat-bg:#e9e6df; --me:#d6f0c9; --bot:#ffffff; --accent:#1f6f4a; --accent-ink:#ffffff;
+  --good:#1f7a4d; --good-bg:#dff1e6; --warn:#9a5b00; --warn-bg:#fbebcc; --neutral-bg:#ebe9e3;
+  --font:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141513; --surface:#1e201d; --ink:#ecebe6; --mute:#9a9d95; --line:#33362f;
+  --chat-bg:#191b18; --me:#24543a; --bot:#262925; --accent:#4fb383; --accent-ink:#0f1a14;
+  --good:#6fd0a0; --good-bg:#1d3a2b; --warn:#f0b960; --warn-bg:#3d2f12; --neutral-bg:#2a2d28; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141513; --surface:#1e201d; --ink:#ecebe6; --mute:#9a9d95; --line:#33362f;
+  --chat-bg:#191b18; --me:#24543a; --bot:#262925; --accent:#4fb383; --accent-ink:#0f1a14;
+  --good:#6fd0a0; --good-bg:#1d3a2b; --warn:#f0b960; --warn-bg:#3d2f12; --neutral-bg:#2a2d28; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--font);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px}
+.wrap{max-width:1120px;margin:0 auto;display:grid;gap:16px}
+header h1{font-size:22px;margin:0 0 4px;font-weight:650;letter-spacing:-.01em;text-wrap:balance}
+header p{margin:0;color:var(--mute);max-width:70ch}
+.note{font-size:13px;color:var(--mute);border-left:3px solid var(--line);padding:2px 0 2px 10px;max-width:80ch}
+.grid{display:grid;gap:16px;grid-template-columns:minmax(0,420px) minmax(0,1fr);align-items:start}
+@media(max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+h2{font-size:13px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.07em;color:var(--mute);font-weight:600}
+label{font-size:13px;color:var(--mute)}
+select,input,button{font:inherit;color:var(--ink)}
+select,input[type=text]{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+button{cursor:pointer;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 12px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chips button{font-size:13px;padding:5px 9px;border-radius:99px;color:var(--mute)}
+#chat{height:380px;overflow:auto;background:var(--chat-bg);border-radius:8px;padding:10px;margin:10px 0;display:flex;flex-direction:column;gap:6px}
+.b{max-width:88%;padding:7px 10px;border-radius:10px;white-space:pre-wrap;overflow-wrap:anywhere}
+.b.me{align-self:flex-end;background:var(--me)}.b.bot{align-self:flex-start;background:var(--bot);border:1px solid var(--line)}
+.b.sys{align-self:center;font-size:12.5px;color:var(--mute);background:transparent}
+form{display:flex;gap:8px}
+.orders{display:grid;gap:10px}
+.order{border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.order .top{display:flex;gap:8px;flex-wrap:wrap;align-items:baseline;justify-content:space-between}
+.order .who{font-weight:600}
+.chip{font-size:12px;padding:2px 9px;border-radius:99px;background:var(--neutral-bg);font-weight:600;white-space:nowrap}
+.chip.good{background:var(--good-bg);color:var(--good)}.chip.warn{background:var(--warn-bg);color:var(--warn)}
+.order ul{margin:6px 0 0;padding-left:18px}
+.order .raw{font-family:var(--mono);font-size:12.5px;color:var(--mute);margin-top:6px;overflow-wrap:anywhere}
+.order .iss{margin-top:6px;font-size:13px;color:var(--warn)}
+.empty{color:var(--mute);font-size:14px;padding:18px 4px}
+.num{font-variant-numeric:tabular-nums}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Simulator Order WhatsApp</h1>
+    <p>Ketik pesan seperti toko memesan ke salesman. Kiri adalah chat yang dilihat toko. Kanan adalah yang dilihat tim internal. Semua berjalan di browser Anda, tanpa instalasi dan tanpa akun WhatsApp.</p>
+    <p class="note">Data produk dan toko adalah contoh (dummy). Ini simulasi langkah 1-4: pesan masuk, pembacaan order, pencocokan dan validasi, konfirmasi ke toko. Belum terhubung ke ERP atau gudang.</p>
+  </header>
+
+  <div class="grid">
+    <section class="panel" aria-label="Chat toko">
+      <h2>Chat toko</h2>
+      <label for="phone">Pengirim</label>
+      <select id="phone"></select>
+      <div id="chat" aria-live="polite"></div>
+      <form id="f">
+        <input id="t" type="text" placeholder="mis. kak, 2 dus hit lavender sama stella gel 1 dus" autocomplete="off">
+        <button class="primary" type="submit">Kirim</button>
+      </form>
+      <div class="chips" id="chips"></div>
+    </section>
+
+    <section class="panel" aria-label="Meja admin">
+      <h2>Meja admin (tampilan internal)</h2>
+      <div class="orders" id="orders"></div>
+      <p style="margin:12px 0 0"><button id="reset">Mulai ulang simulasi</button></p>
+    </section>
+  </div>
+</div>
+
+<script>
+const MASTER = {"skus": [{"code": "HIT-AERO-LAV-600", "name": "HIT Aerosol Lavender 600ml", "aliases": ["hit aerosol lavender", "hit lavender", "hit semprot lavender"], "units": {"pcs": 1, "dus": 12}, "default_unit": "dus", "price_pcs": 38000, "stock_pcs": 480}, {"code": "HIT-AERO-ORG-600", "name": "HIT Aerosol Orange 600ml", "aliases": ["hit aerosol orange", "hit orange", "hit semprot orange", "hit jeruk"], "units": {"pcs": 1, "dus": 12}, "default_unit": "dus", "price_pcs": 38000, "stock_pcs": 24}, {"code": "HIT-ELEC-REF", "name": "HIT Electric Refill Lavender", "aliases": ["hit electric refill", "hit elektrik refill", "hit refill", "hit listrik"], "units": {"pcs": 1, "pak": 6, "dus": 36}, "default_unit": "dus", "price_pcs": 22000, "stock_pcs": 720}, {"code": "STL-GEL-ORG", "name": "Stella Gel Orange 150g", "aliases": ["stella gel orange", "stella gel", "stela gel", "stella orange"], "units": {"pcs": 1, "dus": 24}, "default_unit": "dus", "price_pcs": 15500, "stock_pcs": 960}, {"code": "STL-MATIC-REF", "name": "Stella Matic Refill Jasmine 225ml", "aliases": ["stella matic refill", "stella matic", "stela matic", "stella refill"], "units": {"pcs": 1, "dus": 24}, "default_unit": "dus", "price_pcs": 29000, "stock_pcs": 400}, {"code": "MITU-WIPE-50", "name": "Mitu Baby Wipes 50s", "aliases": ["mitu baby wipes", "mitu wipes", "tisu basah mitu", "mitu tisu basah"], "units": {"pcs": 1, "pak": 6, "dus": 48}, "default_unit": "dus", "price_pcs": 12500, "stock_pcs": 1440}, {"code": "GNO1-SOAP-100", "name": "Godrej No.1 Sabun Mandi 100g", "aliases": ["godrej no 1", "godrej no.1", "godrej sabun", "sabun godrej", "no 1 sabun"], "units": {"pcs": 1, "pak": 4, "dus": 72}, "default_unit": "dus", "price_pcs": 3800, "stock_pcs": 3600}, {"code": "EXP-HC-HITAM", "name": "Expert Hair Color Hitam Alami", "aliases": ["expert hair color hitam", "expert hitam", "expert semir hitam", "semir expert hitam"], "units": {"pcs": 1, "lusin": 12, "dus": 144}, "default_unit": "lusin", "price_pcs": 6500, "stock_pcs": 1728}], "customers": [{"code": "TK-001", "name": "Toko Berkah Jaya", "phones": ["6281234567801"], "salesman": "Andi", "credit_limit": 15000000, "outstanding": 4000000, "overdue_days": 0, "discount_pct": 2, "aliases": {"obat nyamuk": "HIT-AERO-LAV-600", "sabun mandi": "GNO1-SOAP-100"}, "usual_order": [{"sku": "HIT-AERO-LAV-600", "unit": "dus", "qty": 2}, {"sku": "STL-GEL-ORG", "unit": "dus", "qty": 1}], "history_avg_pcs": {"HIT-AERO-LAV-600": 24, "STL-GEL-ORG": 24, "GNO1-SOAP-100": 72}}, {"code": "TK-002", "name": "Warung Sumber Rejeki", "phones": ["6281234567802"], "salesman": "Budi", "credit_limit": 5000000, "outstanding": 3500000, "overdue_days": 45, "discount_pct": 0, "aliases": {}, "usual_order": [{"sku": "GNO1-SOAP-100", "unit": "dus", "qty": 1}], "history_avg_pcs": {"GNO1-SOAP-100": 72, "MITU-WIPE-50": 48}}, {"code": "TK-003", "name": "Minimarket Sentosa", "phones": ["6281234567803"], "salesman": "Andi", "credit_limit": 8000000, "outstanding": 7600000, "overdue_days": 0, "discount_pct": 3, "aliases": {}, "usual_order": [{"sku": "STL-MATIC-REF", "unit": "dus", "qty": 2}], "history_avg_pcs": {"STL-MATIC-REF": 48}}]};
+const SKU = Object.fromEntries(MASTER.skus.map(s => [s.code, s]));
+
+/* ---------- Langkah 2: parser ---------- */
+const UNIT_MAP={dus:'dus',karton:'dus',ctn:'dus',box:'dus',kardus:'dus',pcs:'pcs',pc:'pcs',biji:'pcs',buah:'pcs',btl:'pcs',botol:'pcs',pak:'pak',pack:'pak',bal:'bal',lusin:'lusin',lsn:'lusin',renceng:'renceng',rcg:'renceng'};
+const UNIT_RE=Object.keys(UNIT_MAP).sort((a,b)=>b.length-a.length).join('|');
+const NUM_WORDS={satu:1,dua:2,tiga:3,empat:4,lima:5,enam:6,tujuh:7,delapan:8,sembilan:9,sepuluh:10};
+const MEASURE=/^\d+\s*(?:ml|gr|gram|g|kg|l|liter|s)\b/i;
+const GREETING=/^\s*(?:(?:halo|hai|hi|hallo|permisi|assalamualaikum|assalamu'alaikum|selamat\s+(?:pagi|siang|sore|malam))\b[\s,!.]*)+/i;
+const VOCATIVE=/^\s*(?:kak|kakak|pak|bu|bang|mas|mbak|min|om)\b[\s,!.]*/i;
+const FILLER=new Set(['tolong','mau','order','pesan','pesen','kirim','kirimin','ya','yaa','yah','dong','donk','min','kak','kakak','bu','mohon','minta','nambah','tambah','sama','juga','lagi','yg','yang','dari','untuk','buat','nya','aja','saja']);
+const IGNORABLE=new Set(['terima','kasih','makasih','thanks','tq','ok','oke','siap','sip','baik']);
+const REPEAT=/\b(?:seperti|kayak|kaya|sama\s+kayak|sama\s+seperti|yang)?\s*(?:biasa|biasanya|kemarin|repeat)\b/i;
+const SPLIT=/[\n,;+&]|\s+(?:dan|sama|sm|trus|terus|lalu|sekalian)\s+/i;
+const LEAD=new RegExp('^(?:'+[...FILLER].sort((a,b)=>b.length-a.length).join('|')+')\\b[\\s,]*','i');
+
+function wordsToDigits(t){return t.replace(new RegExp('\\b('+Object.keys(NUM_WORDS).join('|')+')\\b(?=\\s*(?:'+UNIT_RE+')\\b)','gi'),m=>String(NUM_WORDS[m.toLowerCase()]))}
+function cleanProduct(t){return t.toLowerCase().replace(/[^\w\s.]/g,' ').split(/\s+/).filter(x=>x&&!FILLER.has(x)).join(' ').trim()}
+function parseSegment(seg){
+  seg=seg.trim().replace(/(\d+)\s*x\b/gi,'$1');
+  for(;;){const s=seg.replace(LEAD,'');if(s===seg)break;seg=s}
+  let m=seg.match(new RegExp('^(\\d+)\\s*(?:('+UNIT_RE+')\\b)?\\s*(.+)$','i'));
+  if(m&&!MEASURE.test(seg)){const prod=cleanProduct(m[3]);if(prod)return{raw:seg,qty:+m[1],unit:UNIT_MAP[(m[2]||'').toLowerCase()]||null,productText:prod}}
+  m=seg.match(new RegExp('^(.+?)\\s+(\\d+)\\s*('+UNIT_RE+')\\b\\.?$','i'));
+  if(m){const prod=cleanProduct(m[1]);if(prod)return{raw:seg,qty:+m[2],unit:UNIT_MAP[m[3].toLowerCase()],productText:prod}}
+  return null;
+}
+function parseMessage(text){
+  const res={lines:[],unparsed:[],repeatUsual:false};
+  text=wordsToDigits(text.trim().replace(GREETING,'').replace(VOCATIVE,''));
+  for(const seg of text.split(SPLIT)){
+    if(!seg||!seg.trim())continue;
+    if(REPEAT.test(seg)){res.repeatUsual=true;continue}
+    const line=parseSegment(seg);
+    if(line){res.lines.push(line);continue}
+    const toks=seg.toLowerCase().replace(/[^\w\s]/g,' ').split(/\s+/).filter(t=>t&&!FILLER.has(t)&&!IGNORABLE.has(t));
+    if(toks.length&&/\d/.test(seg))res.unparsed.push(seg.trim());
+  }
+  res.isOrder=res.lines.length>0||res.repeatUsual;
+  return res;
+}
+
+/* ---------- Langkah 3: matching & validasi ---------- */
+const MATCH_OK=.85,MATCH_MARGIN=.10,MATCH_MIN=.55,ANOMALY_X=5,OVERDUE_DAYS=30;
+const normPhone=p=>{let d=(p||'').replace(/\D/g,'');if(d.startsWith('0'))d='62'+d.slice(1);else if(d.startsWith('8'))d='62'+d;return d};
+const findCustomer=p=>MASTER.customers.find(c=>c.phones.map(normPhone).includes(normPhone(p)))||null;
+const tokens=s=>s.toLowerCase().replace(/\./g,'').replace(/[^\w\s]/g,' ').split(/\s+/).filter(Boolean);
+function matchCount(a,alo,ahi,b,blo,bhi){let best=0,bi=alo,bj=blo;
+  for(let i=alo;i<ahi;i++)for(let j=blo;j<bhi;j++){let k=0;while(i+k<ahi&&j+k<bhi&&a[i+k]===b[j+k])k++;if(k>best){best=k;bi=i;bj=j}}
+  return best?best+matchCount(a,alo,bi,b,blo,bj)+matchCount(a,bi+best,ahi,b,bj+best,bhi):0}
+const ratio=(a,b)=>(!a.length&&!b.length)?1:2*matchCount(a,0,a.length,b,0,b.length)/(a.length+b.length);
+function score(prod,alias){
+  const p=tokens(prod),a=tokens(alias);if(!p.length||!a.length)return 0;
+  const ps=new Set(p),as=new Set(a);let s=0;
+  if([...as].every(x=>ps.has(x)))s=.85+.15*as.size/ps.size;
+  else if([...ps].every(x=>as.has(x)))s=.5+.4*ps.size/as.size;
+  return Math.max(s,ratio(p.join(' '),a.join(' ')));
+}
+function matchSku(productText,customer){
+  if(customer)for(const [alias,code] of Object.entries(customer.aliases||{}))
+    if(tokens(alias).join(' ')===tokens(productText).join(' '))return{status:'matched',sku:code,score:1,candidates:[]};
+  const scored=[];
+  for(const s of MASTER.skus){const best=Math.max(...[...s.aliases,s.name].map(a=>score(productText,a)));if(best>=MATCH_MIN)scored.push([s.code,best])}
+  scored.sort((x,y)=>y[1]-x[1]);
+  if(!scored.length)return{status:'unmatched',sku:null,score:0,candidates:[]};
+  const top=scored[0],second=scored[1]||[null,0];
+  if(top[1]>=MATCH_OK&&top[1]-second[1]>=MATCH_MARGIN)return{status:'matched',sku:top[0],score:+top[1].toFixed(2),candidates:[]};
+  return{status:'ambiguous',sku:null,score:+top[1].toFixed(2),candidates:scored.slice(0,3).map(x=>x[0])};
+}
+function buildItems(customer,parsed){
+  const items=[];
+  if(parsed.repeatUsual&&customer)for(const u of customer.usual_order)
+    items.push({raw:'(order seperti biasa)',qty:u.qty,unit:u.unit,productText:SKU[u.sku].name,status:'matched',sku:u.sku,score:1,candidates:[]});
+  for(const ln of parsed.lines)items.push({raw:ln.raw,qty:ln.qty,unit:ln.unit,productText:ln.productText,...matchSku(ln.productText,customer)});
+  return items;
+}
+const rp=n=>'Rp'+Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+function validate(customer,items,unparsed){
+  const issues=[];let total=0;
+  for(const t of unparsed||[])issues.push({code:'unparsed',severity:'internal',message:`Tidak terbaca: '${t}'`});
+  if(!customer)issues.push({code:'unknown_customer',severity:'internal',message:'Nomor WA belum terdaftar di master customer'});
+  if(!items.length)issues.push({code:'no_items',severity:'internal',message:'Tidak ada item order'});
+  for(const it of items){
+    if(it.status==='unmatched'){issues.push({code:'unmatched',severity:'internal',message:`Produk tidak dikenali: '${it.productText}'`});continue}
+    if(it.status==='ambiguous'){issues.push({code:'ambiguous',severity:'ask',message:`Produk ambigu: '${it.productText}'`});continue}
+    const sku=SKU[it.sku];it.name=sku.name;const unit=it.unit||sku.default_unit;
+    if(!it.unit)issues.push({code:'unit_assumed',severity:'info',message:`${sku.name}: satuan tidak disebut, diasumsikan ${unit}`});
+    if(!(unit in sku.units)){issues.push({code:'bad_unit',severity:'internal',message:`${sku.name}: satuan '${unit}' tidak tersedia`});it.unitFinal=unit;it.qtyPcs=null;continue}
+    it.unitFinal=unit;it.qtyPcs=it.qty*sku.units[unit];
+    const disc=customer?customer.discount_pct:0;
+    it.unitPrice=Math.round(sku.price_pcs*sku.units[unit]*(1-disc/100));it.subtotal=it.unitPrice*it.qty;total+=it.subtotal;
+    if(it.qty<=0)issues.push({code:'bad_qty',severity:'internal',message:`${sku.name}: qty tidak valid`});
+    if(it.qtyPcs>sku.stock_pcs)issues.push({code:'low_stock',severity:'internal',message:`${sku.name}: diminta ${it.qtyPcs} pcs, stok ${sku.stock_pcs} pcs`});
+    const avg=customer&&customer.history_avg_pcs[it.sku];
+    if(avg&&it.qtyPcs>ANOMALY_X*avg)issues.push({code:'qty_anomaly',severity:'internal',message:`${sku.name}: ${it.qtyPcs} pcs lebih dari ${ANOMALY_X}x rata-rata toko (${avg} pcs)`});
+  }
+  if(customer){
+    if(customer.overdue_days>OVERDUE_DAYS)issues.push({code:'overdue',severity:'internal',message:`Toko overdue ${customer.overdue_days} hari`});
+    if(customer.outstanding+total>customer.credit_limit)issues.push({code:'credit_limit',severity:'internal',message:`Piutang ${rp(customer.outstanding)} + order ${rp(total)} melebihi limit ${rp(customer.credit_limit)}`});
+  }
+  return{issues,total};
+}
+function decideStatus(issues){
+  const blocking=issues.filter(i=>i.severity==='ask'||i.severity==='internal'),asks=blocking.filter(i=>i.severity==='ask');
+  if(!blocking.length)return'awaiting_confirmation';
+  return(asks.length===1&&blocking.length===1)?'awaiting_clarification':'needs_review';
+}
+
+/* ---------- Langkah 4: balasan ke toko ---------- */
+const qtyText=it=>{const u=it.unitFinal||it.unit||'';return `${it.qty} ${u}${it.qtyPcs&&u!=='pcs'?` (${it.qtyPcs} pcs)`:''}`.trim()};
+const R={
+  summary:(c,items,total)=>`Halo Kak ${c.name} 🙏 Pesanannya kami catat ya:\n${items.map((it,i)=>`${i+1}. ${it.name} - ${qtyText(it)}`).join('\n')}\n\nEstimasi total ${rp(total)}.\nBalas *OK* kalau sudah benar, atau balas *ubah* kalau ada yang salah.`,
+  clarify:(c,items)=>{const it=items.find(i=>i.status==='ambiguous');return `Halo Kak ${c.name} 🙏 Untuk "${it.productText}", maksudnya yang mana ya?\n${it.candidates.map((x,n)=>`${n+1}. ${SKU[x].name}`).join('\n')}\nBalas dengan nomornya saja ya Kak.`},
+  received:c=>`Halo${c?` Kak ${c.name}`:''} 🙏 Pesanannya sudah kami terima, tim kami proses dan konfirmasi segera ya.`,
+  unknown:()=>'Halo 🙏 Pesan Kakak sudah kami terima dan diteruskan ke tim sales kami.',
+  confirmed:(c,id)=>`Siap Kak ${c.name}, pesanan #${id} sudah terkonfirmasi ✅ Terima kasih!`,
+  retry:()=>'Baik Kak, mohon tulis ulang pesanan yang benar ya, nanti kami catat lagi 🙏',
+  cancelled:id=>`Baik Kak, pesanan #${id} kami batalkan.`
+};
+
+/* ---------- Orkestrasi (in-memory) ---------- */
+const CONFIRM=new Set(['ok','oke','okey','ya','iya','yes','betul','benar','sip','siap','setuju','lanjut']);
+const CHANGE=new Set(['ubah','salah','revisi','ganti','tidak','gak','nggak']);
+const CANCEL=new Set(['batal','cancel','batalkan']);
+let orders=[],seq=1,chats={};
+const pendingFor=ph=>[...orders].reverse().find(o=>o.phone===ph&&(o.status==='awaiting_confirmation'||o.status==='awaiting_clarification'));
+function finalize(order,phone,customer,items,unparsed,rawText){
+  const v=validate(customer,items,unparsed),status=decideStatus(v.issues);
+  if(!order){order={id:seq++,phone,rawText};orders.push(order)}
+  Object.assign(order,{customer,items,issues:v.issues,total:v.total,status});
+  const reply=!customer?R.unknown():status==='awaiting_confirmation'?R.summary(customer,items,v.total):status==='awaiting_clarification'?R.clarify(customer,items):R.received(customer);
+  return{reply};
+}
+function handle(phoneRaw,text,mediaType){
+  const phone=normPhone(phoneRaw),customer=findCustomer(phone);
+  if(mediaType){orders.push({id:seq++,phone,customer,rawText:`[${mediaType}]`,items:[],issues:[{code:'media',severity:'internal',message:`Pesan ${mediaType} perlu dibaca manual`}],total:0,status:'needs_review'});return{reply:R.received(customer)}}
+  const pending=pendingFor(phone),word=text.toLowerCase().replace(/[^\w\s]/g,'').trim();
+  if(pending&&customer){
+    if(CONFIRM.has(word)&&pending.status==='awaiting_confirmation'){pending.status='confirmed';return{reply:R.confirmed(customer,pending.id)}}
+    if(CANCEL.has(word)){pending.status='cancelled';return{reply:R.cancelled(pending.id)}}
+    if(CHANGE.has(word)){pending.status='superseded';return{reply:R.retry()}}
+    if(pending.status==='awaiting_clarification'&&/^\d+$/.test(word)){
+      const amb=pending.items.find(i=>i.status==='ambiguous'),idx=+word-1;
+      if(amb&&idx>=0&&idx<amb.candidates.length){Object.assign(amb,{status:'matched',sku:amb.candidates[idx],score:1,candidates:[]});return finalize(pending,phone,customer,pending.items,null)}
+    }
+  }
+  const parsed=parseMessage(text);
+  if(!parsed.isOrder)return{reply:null};
+  if(pending)pending.status='superseded';
+  return finalize(null,phone,customer,buildItems(customer,parsed),parsed.unparsed,text);
+}
+
+/* ---------- Tampilan ---------- */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const STATUS={awaiting_confirmation:['Menunggu OK toko',''],awaiting_clarification:['Menunggu pilihan toko',''],needs_review:['Perlu review admin','warn'],confirmed:['Terkonfirmasi','good'],cancelled:['Dibatalkan',''],superseded:['Diganti pesan baru','']};
+const PHONES=[['6281234567801','Toko Berkah Jaya (order normal)'],['6281234567802','Warung Sumber Rejeki (overdue)'],['6281234567803','Minimarket Sentosa (limit kredit mepet)'],['6289999999999','Nomor tidak terdaftar']];
+const SAMPLES=['kak mau order 2 dus hit lavender sama stella gel 1 dus','seperti biasa ya kak','hit 2 dus','obat nyamuk 1 dus','5 dus hit orange','1 dus godrej no 1','3 dus stella matic','dua karton mitu wipes, hit refill 1 pak','kak kapan barang sampai?'];
+$('phone').innerHTML=PHONES.map(([v,l])=>`<option value="${v}">${esc(l)}</option>`).join('');
+$('chips').innerHTML=SAMPLES.map(s=>`<button type="button" data-s="${esc(s)}">${esc(s.length>34?s.slice(0,32)+'…':s)}</button>`).join('')+'<button type="button" id="media">kirim voice note</button>';
+
+function bubble(phone,cls,txt){(chats[phone]=chats[phone]||[]).push([cls,txt])}
+function render(){
+  const ph=$('phone').value;
+  $('chat').innerHTML=(chats[ph]||[]).map(([c,t])=>`<div class="b ${c}">${esc(t)}</div>`).join('')||'<div class="b sys">Belum ada pesan. Pilih contoh di bawah atau ketik sendiri.</div>';
+  $('chat').scrollTop=1e9;
+  $('orders').innerHTML=[...orders].reverse().map(o=>{
+    const [label,cls]=STATUS[o.status],notes=o.issues.filter(i=>i.severity!=='info').map(i=>esc(i.message)).join('<br>');
+    const items=(o.items||[]).filter(i=>i.name).map(i=>`<li>${esc(i.name)} — ${esc(qtyText(i))} <span class="num">${i.subtotal?'· '+rp(i.subtotal):''}</span></li>`).join('');
+    return `<article class="order"><div class="top"><span class="who">#${o.id} · ${esc(o.customer?o.customer.name:'Nomor tidak dikenal')}</span><span class="chip ${cls}">${label}</span></div>
+      ${items?`<ul>${items}</ul>`:''}${o.total?`<div class="num" style="margin-top:6px"><b>${rp(o.total)}</b></div>`:''}
+      <div class="raw">${esc(o.rawText)}</div>${notes?`<div class="iss">Catatan internal:<br>${notes}</div>`:''}</article>`}).join('')
+    ||'<div class="empty">Belum ada order. Kirim pesan dari kiri, order yang terbentuk muncul di sini beserta catatan internal yang tidak dilihat toko.</div>';
+}
+function send(text){
+  const ph=$('phone').value;text=text.trim();if(!text)return;
+  bubble(ph,'me',text);const r=handle(ph,text);
+  bubble(ph,r.reply?'bot':'sys',r.reply||'Bot diam: ini bukan pesan order, jadi salesman yang membalas.');render();
+}
+$('f').addEventListener('submit',e=>{e.preventDefault();send($('t').value);$('t').value=''});
+$('chips').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.id==='media'){const ph=$('phone').value;bubble(ph,'me','🎤 (voice note)');bubble(ph,'bot',handle(ph,null,'audio').reply);render()}
+  else if(b.dataset.s)send(b.dataset.s)});
+$('phone').addEventListener('change',render);
+$('reset').addEventListener('click',()=>{orders=[];seq=1;chats={};render()});
+render();
+</script>
+
+</body>
+</html>

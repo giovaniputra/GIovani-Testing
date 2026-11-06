@@ -13,6 +13,10 @@ Cakupan versi ini adalah empat langkah pertama dari alur target:
 
 Belum ada: push ke ERP/DMS dan picking list gudang (langkah 5-7), voice note dan foto (ditandai `needs_review`), UI koreksi admin.
 
+## Tanpa instalasi
+
+Buka `simulator.html` dengan klik dua kali. Isinya simulator satu file yang menjalankan langkah 1-4 di browser (data dummy, tanpa database dan tanpa koneksi WhatsApp).
+
 ## Jalankan
 
 ```bash

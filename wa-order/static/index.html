@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Simulator Order WA</title>
+<style>
+  :root{--bg:#f4f4f4;--card:#fff;--ink:#141414;--mute:#717171;--line:#e6e6e6;--me:#dcf8c6;--bot:#fff}
+  @media (prefers-color-scheme:dark){:root{--bg:#141414;--card:#1e1e1e;--ink:#f2f2f2;--mute:#a0a0a0;--line:#333;--me:#245c3a;--bot:#2a2a2a}}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,sans-serif}
+  main{max-width:1000px;margin:0 auto;padding:16px;display:grid;gap:16px;grid-template-columns:1fr 1fr}
+  @media(max-width:760px){main{grid-template-columns:1fr}}
+  section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+  h1{font-size:18px;margin:0 0 4px}h2{font-size:15px;margin:0 0 10px}.mute{color:var(--mute);font-size:13px}
+  select,input,button{font:inherit;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+  button{background:#141414;color:#fff;border:0;cursor:pointer}
+  #chat{height:340px;overflow:auto;background:var(--bg);border-radius:8px;padding:8px;margin:10px 0;display:flex;flex-direction:column;gap:6px}
+  .b{max-width:85%;padding:7px 10px;border-radius:10px;white-space:pre-wrap}.me{align-self:flex-end;background:var(--me)}.bot{align-self:flex-start;background:var(--bot);border:1px solid var(--line)}
+  form{display:flex;gap:8px}form input{flex:1}
+  table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+  .tag{padding:1px 7px;border-radius:99px;background:var(--line);font-size:12px}
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <h1>Simulator chat toko</h1>
+    <div class="mute">Meniru pesan WhatsApp masuk. Tidak butuh akun WhatsApp.</div>
+    <p><select id="phone">
+      <option value="6281234567801">Toko Berkah Jaya (normal)</option>
+      <option value="6281234567802">Warung Sumber Rejeki (overdue)</option>
+      <option value="6281234567803">Minimarket Sentosa (limit kredit mepet)</option>
+      <option value="6289999999999">Nomor tidak terdaftar</option>
+    </select></p>
+    <div id="chat"></div>
+    <form id="f"><input id="t" placeholder="mis. kak, 2 dus hit lavender sama stella gel 1 dus" autocomplete="off"><button>Kirim</button></form>
+  </section>
+  <section>
+    <h2>Order yang terbentuk (tampilan internal)</h2>
+    <table><thead><tr><th>#</th><th>Toko</th><th>Status</th><th>Total</th><th>Catatan internal</th></tr></thead><tbody id="rows"></tbody></table>
+  </section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function bubble(cls,txt){const d=document.createElement('div');d.className='b '+cls;d.textContent=txt;$('chat').append(d);$('chat').scrollTop=1e9}
+async function refresh(){
+  const o=await (await fetch('/api/orders')).json();
+  $('rows').innerHTML=o.map(r=>`<tr><td>${r.id}</td><td>${esc(r.customer_code||'?')}</td><td><span class="tag">${esc(r.status)}</span></td>
+   <td>${r.total?'Rp'+Math.round(r.total).toLocaleString('id-ID'):'-'}</td>
+   <td>${r.issues.filter(i=>i.severity!=='info').map(i=>esc(i.message)).join('<br>')||'-'}</td></tr>`).join('')||'<tr><td colspan=5 class="mute">Belum ada order</td></tr>';
+}
+$('f').onsubmit=async e=>{
+  e.preventDefault();const text=$('t').value.trim();if(!text)return;
+  bubble('me',text);$('t').value='';
+  const r=await (await fetch('/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:$('phone').value,text})})).json();
+  if(r.reply)bubble('bot',r.reply);else bubble('bot','(bot diam: bukan pesan order, biar salesman yang membalas)');
+  refresh();
+};
+refresh();
+</script>
+</body>
+</html>

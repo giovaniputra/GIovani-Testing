@@ -33,3 +33,7 @@ Names are taken from the June 2026 squad. To change them, edit the `ROSTER` obje
 - Promotion is always to a queen
 - No draw detection for repetition, fifty-move rule or insufficient material
 - No undo, clock or move history
+
+## WA Order Intake
+
+Otomasi order WhatsApp toko ke tim sales dan gudang. Lihat [`wa-order/README.md`](wa-order/README.md).

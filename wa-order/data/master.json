@@ -1,0 +1,27 @@
+{
+  "_note": "DATA DUMMY untuk demo. Ganti dengan export master customer & SKU asli (ERP/DMS).",
+  "skus": [
+    {"code": "HIT-AERO-LAV-600", "name": "HIT Aerosol Lavender 600ml", "aliases": ["hit aerosol lavender", "hit lavender", "hit semprot lavender"], "units": {"pcs": 1, "dus": 12}, "default_unit": "dus", "price_pcs": 38000, "stock_pcs": 480},
+    {"code": "HIT-AERO-ORG-600", "name": "HIT Aerosol Orange 600ml", "aliases": ["hit aerosol orange", "hit orange", "hit semprot orange", "hit jeruk"], "units": {"pcs": 1, "dus": 12}, "default_unit": "dus", "price_pcs": 38000, "stock_pcs": 24},
+    {"code": "HIT-ELEC-REF", "name": "HIT Electric Refill Lavender", "aliases": ["hit electric refill", "hit elektrik refill", "hit refill", "hit listrik"], "units": {"pcs": 1, "pak": 6, "dus": 36}, "default_unit": "dus", "price_pcs": 22000, "stock_pcs": 720},
+    {"code": "STL-GEL-ORG", "name": "Stella Gel Orange 150g", "aliases": ["stella gel orange", "stella gel", "stela gel", "stella orange"], "units": {"pcs": 1, "dus": 24}, "default_unit": "dus", "price_pcs": 15500, "stock_pcs": 960},
+    {"code": "STL-MATIC-REF", "name": "Stella Matic Refill Jasmine 225ml", "aliases": ["stella matic refill", "stella matic", "stela matic", "stella refill"], "units": {"pcs": 1, "dus": 24}, "default_unit": "dus", "price_pcs": 29000, "stock_pcs": 400},
+    {"code": "MITU-WIPE-50", "name": "Mitu Baby Wipes 50s", "aliases": ["mitu baby wipes", "mitu wipes", "tisu basah mitu", "mitu tisu basah"], "units": {"pcs": 1, "pak": 6, "dus": 48}, "default_unit": "dus", "price_pcs": 12500, "stock_pcs": 1440},
+    {"code": "GNO1-SOAP-100", "name": "Godrej No.1 Sabun Mandi 100g", "aliases": ["godrej no 1", "godrej no.1", "godrej sabun", "sabun godrej", "no 1 sabun"], "units": {"pcs": 1, "pak": 4, "dus": 72}, "default_unit": "dus", "price_pcs": 3800, "stock_pcs": 3600},
+    {"code": "EXP-HC-HITAM", "name": "Expert Hair Color Hitam Alami", "aliases": ["expert hair color hitam", "expert hitam", "expert semir hitam", "semir expert hitam"], "units": {"pcs": 1, "lusin": 12, "dus": 144}, "default_unit": "lusin", "price_pcs": 6500, "stock_pcs": 1728}
+  ],
+  "customers": [
+    {"code": "TK-001", "name": "Toko Berkah Jaya", "phones": ["6281234567801"], "salesman": "Andi", "credit_limit": 15000000, "outstanding": 4000000, "overdue_days": 0, "discount_pct": 2,
+     "aliases": {"obat nyamuk": "HIT-AERO-LAV-600", "sabun mandi": "GNO1-SOAP-100"},
+     "usual_order": [{"sku": "HIT-AERO-LAV-600", "unit": "dus", "qty": 2}, {"sku": "STL-GEL-ORG", "unit": "dus", "qty": 1}],
+     "history_avg_pcs": {"HIT-AERO-LAV-600": 24, "STL-GEL-ORG": 24, "GNO1-SOAP-100": 72}},
+    {"code": "TK-002", "name": "Warung Sumber Rejeki", "phones": ["6281234567802"], "salesman": "Budi", "credit_limit": 5000000, "outstanding": 3500000, "overdue_days": 45, "discount_pct": 0,
+     "aliases": {},
+     "usual_order": [{"sku": "GNO1-SOAP-100", "unit": "dus", "qty": 1}],
+     "history_avg_pcs": {"GNO1-SOAP-100": 72, "MITU-WIPE-50": 48}},
+    {"code": "TK-003", "name": "Minimarket Sentosa", "phones": ["6281234567803"], "salesman": "Andi", "credit_limit": 8000000, "outstanding": 7600000, "overdue_days": 0, "discount_pct": 3,
+     "aliases": {},
+     "usual_order": [{"sku": "STL-MATIC-REF", "unit": "dus", "qty": 2}],
+     "history_avg_pcs": {"STL-MATIC-REF": 48}}
+  ]
+}

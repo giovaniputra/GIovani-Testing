@@ -29,6 +29,7 @@ Buka http://localhost:8000 untuk simulator chat. Tidak butuh akun WhatsApp.
 
 ```bash
 python -m pytest -q
+python -m tests.run_sim   # simulasi massal 54 chat (akurasi parser + matching)
 ```
 
 ## Hubungkan ke WhatsApp Cloud API

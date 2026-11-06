@@ -98,35 +98,54 @@ const NUM_WORDS={satu:1,dua:2,tiga:3,empat:4,lima:5,enam:6,tujuh:7,delapan:8,sem
 const MEASURE=/^\d+\s*(?:ml|gr|gram|g|kg|l|liter|s)\b/i;
 const GREETING=/^\s*(?:(?:halo|hai|hi|hallo|permisi|assalamualaikum|assalamu'alaikum|selamat\s+(?:pagi|siang|sore|malam))\b[\s,!.]*)+/i;
 const VOCATIVE=/^\s*(?:kak|kakak|pak|bu|bang|mas|mbak|min|om)\b[\s,!.]*/i;
-const FILLER=new Set(['tolong','mau','order','pesan','pesen','kirim','kirimin','ya','yaa','yah','dong','donk','min','kak','kakak','bu','mohon','minta','nambah','tambah','sama','juga','lagi','yg','yang','dari','untuk','buat','nya','aja','saja']);
+const FILLER=new Set(['tolong','mau','order','pesan','pesen','kirim','kirimin','ya','yaa','yah','dong','donk','min','kak','kakak','bu','mohon','minta','nambah','tambah','sama','juga','lagi','yg','yang','dari','untuk','buat','nya','aja','saja','tapi','cuma']);
+const FRACTION=new Set(['setengah','separuh','stengah','1/2']);
 const IGNORABLE=new Set(['terima','kasih','makasih','thanks','tq','ok','oke','siap','sip','baik']);
 const REPEAT=/\b(?:seperti|kayak|kaya|sama\s+kayak|sama\s+seperti|yang)?\s*(?:biasa|biasanya|kemarin|repeat)\b/i;
+const TRAIL=/(?:[\s,!.]+(?:ya|yaa|yah|dong|donk|kak|kakak|aja|saja|tolong|nya|min))+[\s,!.]*$/i;
+const GLUE_UNIT=new RegExp('([a-z.]\\s+\\d+\\s*(?:'+UNIT_RE+')\\b)\\s+(?=[a-z])','gi');
+const GLUE_BARE=new RegExp('(?<=[a-z])\\s+(?=\\d+\\s+(?!(?:'+UNIT_RE+'|ml|gr|gram|g|kg|l|liter|s)\\b)[a-z])','gi');
 const SPLIT=/[\n,;+&]|\s+(?:dan|sama|sm|trus|terus|lalu|sekalian)\s+/i;
 const LEAD=new RegExp('^(?:'+[...FILLER].sort((a,b)=>b.length-a.length).join('|')+')\\b[\\s,]*','i');
 
 function wordsToDigits(t){return t.replace(new RegExp('\\b('+Object.keys(NUM_WORDS).join('|')+')\\b(?=\\s*(?:'+UNIT_RE+')\\b)','gi'),m=>String(NUM_WORDS[m.toLowerCase()]))}
 function cleanProduct(t){return t.toLowerCase().replace(/[^\w\s.]/g,' ').split(/\s+/).filter(x=>x&&!FILLER.has(x)).join(' ').trim()}
+function stripLead(seg){for(;;){const s=seg.replace(LEAD,'');if(s===seg)return seg;seg=s}}
+function splitGlued(seg){
+  seg=stripLead(seg.trim());
+  if(!/^\d/.test(seg))seg=seg.replace(GLUE_UNIT,'$1, ');
+  return seg.replace(GLUE_BARE,', ').split(', ').filter(p=>p.trim());
+}
 function parseSegment(seg){
-  seg=seg.trim().replace(/(\d+)\s*x\b/gi,'$1');
-  for(;;){const s=seg.replace(LEAD,'');if(s===seg)break;seg=s}
+  seg=seg.trim().replace(/(\d+)\s*x\b/gi,'$1').replace(/\bx\s*(\d+)\b/gi,' $1').replace(TRAIL,'').trim();
+  seg=stripLead(seg);
   let m=seg.match(new RegExp('^(\\d+)\\s*(?:('+UNIT_RE+')\\b)?\\s*(.+)$','i'));
   if(m&&!MEASURE.test(seg)){const prod=cleanProduct(m[3]);if(prod)return{raw:seg,qty:+m[1],unit:UNIT_MAP[(m[2]||'').toLowerCase()]||null,productText:prod}}
   m=seg.match(new RegExp('^(.+?)\\s+(\\d+)\\s*('+UNIT_RE+')\\b\\.?$','i'));
   if(m){const prod=cleanProduct(m[1]);if(prod)return{raw:seg,qty:+m[2],unit:UNIT_MAP[m[3].toLowerCase()],productText:prod}}
+  m=seg.match(/^(.+?)\s+(\d{1,2})$/);
+  if(m){const prod=cleanProduct(m[1]);if(prod)return{raw:seg,qty:+m[2],unit:null,productText:prod}}
   return null;
 }
 function parseMessage(text){
   const res={lines:[],unparsed:[],repeatUsual:false};
   text=wordsToDigits(text.trim().replace(GREETING,'').replace(VOCATIVE,''));
-  for(const seg of text.split(SPLIT)){
-    if(!seg||!seg.trim())continue;
-    if(REPEAT.test(seg)){res.repeatUsual=true;continue}
+  const segments=text.split(SPLIT).filter(x=>x&&x.trim()).flatMap(splitGlued);
+  for(const seg of segments){
+    if(REPEAT.test(seg)){
+      res.repeatUsual=true;
+      const strip=x=>x.replace(/^(?:tapi|cuma|hanya|tambah|plus|ditambah)\b[\s,]*/i,'');
+      const rest=strip(strip(seg.replace(REPEAT,' ').trim()));
+      const extra=rest.trim()?parseSegment(rest):null;
+      if(extra)res.lines.push(extra);
+      continue}
     const line=parseSegment(seg);
     if(line){res.lines.push(line);continue}
     const toks=seg.toLowerCase().replace(/[^\w\s]/g,' ').split(/\s+/).filter(t=>t&&!FILLER.has(t)&&!IGNORABLE.has(t));
     if(toks.length&&/\d/.test(seg))res.unparsed.push(seg.trim());
+    if(toks.length&&toks.some(t=>FRACTION.has(t))){res.orderLikeUnparsed=true;if(!res.unparsed.includes(seg.trim()))res.unparsed.push(seg.trim())}
   }
-  res.isOrder=res.lines.length>0||res.repeatUsual;
+  res.isOrder=res.lines.length>0||res.repeatUsual||!!res.orderLikeUnparsed;
   return res;
 }
 

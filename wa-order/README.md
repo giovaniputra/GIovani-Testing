@@ -17,6 +17,14 @@ Belum ada: push ke ERP/DMS dan picking list gudang (langkah 5-7), voice note dan
 
 Buka `simulator.html` dengan klik dua kali. Isinya simulator satu file yang menjalankan langkah 1-4 di browser (data dummy, tanpa database dan tanpa koneksi WhatsApp).
 
+Simulator juga mendukung katalog dan keranjang seperti di WhatsApp, serta tombol **Pakai master data Anda** untuk memuat file master JSON langsung di browser (tidak diunggah ke mana pun).
+
+## Master data
+
+- `data/master.json` adalah data dummy.
+- `tools/import_master_tsv.py` mengubah export Product Master (TSV) menjadi format master. Hasilnya tidak boleh di-commit karena data internal.
+- Export hierarki produk tidak memuat harga, isi per dus, dan stok. Ketiganya perlu dilengkapi dari sumber lain supaya total harga dan konversi satuan bekerja.
+
 ## Jalankan
 
 ```bash

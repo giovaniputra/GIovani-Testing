@@ -1,0 +1,41 @@
+<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SKP Collection</title>
+<style>
+:root{--ink:#141414;--g:#717171;--l:#e6e6e6}*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;color:var(--ink);background:#fff;padding:24px 28px}
+h1{margin:0 0 4px;font-size:26px}.sim{display:inline-block;background:#ffe9a8;padding:2px 8px;border-radius:3px;font-size:12px;margin-left:8px}
+.cards{display:flex;gap:12px;margin:16px 0;flex-wrap:wrap}.card{border:1px solid var(--l);padding:10px 16px;min-width:110px}.card b{display:block;font-size:24px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}input,select,button{padding:7px 10px;font-size:14px;border:1px solid #cfcfcf;background:#fff}
+button{background:var(--ink);color:#fff;border-color:var(--ink);cursor:pointer}button.s{background:#fff;color:var(--ink)}
+table{border-collapse:collapse;width:100%;font-size:14px}th{background:var(--ink);color:#fff;text-align:left;padding:8px}td{padding:7px 8px;border-bottom:1px solid var(--l)}
+.t{padding:2px 8px;border-radius:10px;font-size:12px;background:var(--l)}.t.Draft{background:#ffe9a8}.t.Submitted{background:#bfe8c6}
+dialog{border:1px solid #999;padding:20px;width:min(440px,92vw)}dialog label{display:block;margin:10px 0 4px;font-size:13px;color:var(--g)}dialog input,dialog textarea{width:100%;padding:7px;font:inherit}
+.wrap{overflow-x:auto}#err{color:#b00020;min-height:18px;font-size:13px}
+</style></head><body>
+<h1>SKP Collection <span class="sim" id="mode"></span></h1>
+<div style="color:var(--g)">Pengumpulan realisasi SKP berdasarkan baris data sumber.</div>
+<div class="cards" id="cards"></div>
+<div class="bar"><input id="q" placeholder="Cari nama / NIK / sasaran"><select id="periode"></select><select id="dept"></select>
+<select id="status"><option value="">Semua status</option><option>Belum</option><option>Draft</option><option>Submitted</option></select>
+<button class="s" id="sync">Sinkron sumber</button><button id="exp">Ekspor CSV</button></div>
+<div class="wrap"><table><thead><tr><th>NIK</th><th>Nama</th><th>Dept</th><th>Periode</th><th>Sasaran</th><th>Target</th><th>Realisasi</th><th>Capaian</th><th>Status</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+<dialog id="dlg"><form method="dialog" id="f"><b id="dt"></b>
+<label>Realisasi</label><input id="real" type="number" step="any"><label>Catatan</label><textarea id="cat" rows="3" maxlength="500"></textarea>
+<div id="err"></div><div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="s" id="sv">Simpan draft</button><button type="button" id="sb">Submit</button><button type="button" class="s" id="cl">Batal</button></div></form></dialog>
+<script>
+const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let cur=null,data=[];const qs=()=>new URLSearchParams(Object.fromEntries(['q','periode','dept','status'].map(k=>[k,$(k).value]).filter(x=>x[1])));
+async function load(){const s=qs().toString();data=await(await fetch('/api/rows?'+s)).json();const m=await(await fetch('/api/summary?'+s)).json();
+$('cards').innerHTML=[['Total',m.total],['Belum',m.belum],['Draft',m.draft],['Submitted',m.submitted]].map(([a,b])=>`<div class="card">${a}<b>${b}</b></div>`).join('');
+$('rows').innerHTML=data.map(r=>`<tr><td>${esc(r.NIK)}</td><td>${esc(r.Nama)}</td><td>${esc(r.Departemen)}</td><td>${esc(r.Periode)}</td><td>${esc(r.Sasaran)}</td><td>${r.Target} ${esc(r.Satuan)}</td><td>${r.Realisasi??'-'}</td><td>${r.Capaian==null?'-':r.Capaian+'%'}</td><td><span class="t ${r.Status}">${r.Status}</span></td><td>${r.Status==='Submitted'?'':`<button class="s" data-id="${r.PlanID}">Isi</button>`}</td></tr>`).join('')||'<tr><td colspan=10>Tidak ada data</td></tr>'}
+async function init(){const m=await(await fetch('/api/meta')).json();$('mode').textContent=m.mode;
+$('periode').innerHTML='<option value="">Semua periode</option>'+m.periode.map(v=>`<option>${esc(v)}</option>`).join('');
+$('dept').innerHTML='<option value="">Semua dept</option>'+m.dept.map(v=>`<option>${esc(v)}</option>`).join('');load()}
+['q','periode','dept','status'].forEach(k=>$(k).addEventListener('input',load));
+$('rows').onclick=e=>{const id=e.target.dataset.id;if(!id)return;cur=data.find(r=>r.PlanID==id);$('dt').textContent=cur.Nama+' - '+cur.Sasaran+' (target '+cur.Target+' '+cur.Satuan+')';$('real').value=cur.Realisasi??'';$('cat').value=cur.Catatan||'';$('err').textContent='';$('dlg').showModal()};
+async function save(status){const r=await fetch(`/api/rows/${cur.PlanID}/collect`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({realisasi:$('real').value,catatan:$('cat').value,status})});
+if(!r.ok){$('err').textContent=(await r.json()).error;return}$('dlg').close();load()}
+$('sv').onclick=()=>save('Draft');$('sb').onclick=()=>save('Submitted');$('cl').onclick=()=>$('dlg').close();
+$('sync').onclick=async()=>{await fetch('/api/sync',{method:'POST'});load()};$('exp').onclick=()=>location='/api/export.csv?'+qs();
+init();
+</script></body></html>

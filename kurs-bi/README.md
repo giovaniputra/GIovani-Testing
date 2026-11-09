@@ -13,6 +13,7 @@ Buka http://localhost:3000
 ## Fitur
 - Tombol **Refresh dari bi.go.id**: mengambil kurs terbaru langsung dari situs BI (10–60 detik).
 - **Cari tanggal**: kurs harian untuk tanggal tertentu (akhir pekan/libur: tidak ada data).
+- Kurs Tengah = (Kurs Jual + Kurs Beli) / 2 / Nilai (di tabel web dan kolom `kurs_tengah` di CSV).
 - Filter mata uang, dan Δ Jual terhadap tanggal sebelumnya yang pernah diambil.
 - Data disimpan di `cache.json` (tidak masuk git).
 

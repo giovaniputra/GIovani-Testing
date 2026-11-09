@@ -121,17 +121,18 @@ def main():
         raise SystemExit("Tidak ada data yang ditemukan.")
     with open(a.output, "w", newline="", encoding="utf-8-sig") as fh:  # utf-8-sig: langsung rapi di Excel
         w = csv.writer(fh)
-        w.writerow(["tanggal", "kode", "nama", "nilai", "kurs_jual", "kurs_beli"])
-        w.writerows(hasil)
+        w.writerow(["tanggal", "kode", "nama", "nilai", "kurs_jual", "kurs_tengah", "kurs_beli"])
+        for t, k, nm, v, j, b in hasil:  # kurs_tengah = (jual + beli) / 2 / nilai
+            w.writerow([t, k, nm, v, j, round((j + b) / 2 / v, 4), b])
     print(f"\nSelesai: {len(hasil)} baris disimpan ke {a.output}")
 
     # tampilkan ringkasan tanggal terakhir di layar
     tgl = hasil[-1][0]
     print(f"\nKurs {tgl}:")
-    print(f"{'Kode':<5}{'Nilai':>8}{'Kurs Jual':>16}{'Kurs Beli':>16}")
+    print(f"{'Kode':<5}{'Nilai':>8}{'Kurs Jual':>16}{'Kurs Tengah':>16}{'Kurs Beli':>16}")
     for t, k, n, v, j, b in hasil:
         if t == tgl:
-            print(f"{k:<5}{v:>8,.0f}{j:>16,.2f}{b:>16,.2f}")
+            print(f"{k:<5}{v:>8,.0f}{j:>16,.2f}{(j + b) / 2 / v:>16,.2f}{b:>16,.2f}")
 
 
 if __name__ == "__main__":

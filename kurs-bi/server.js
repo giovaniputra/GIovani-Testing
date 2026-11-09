@@ -2,6 +2,8 @@
 // Source: https://www.bi.go.id/id/statistik/informasi-kurs/transaksi-bi/Default.aspx
 const http = require("http"), fs = require("fs"), path = require("path");
 const BI = "https://www.bi.go.id/id/statistik/informasi-kurs/transaksi-bi/Default.aspx";
+const JISDOR = "https://www.bi.go.id/id/statistik/informasi-kurs/jisdor/default.aspx";
+const PJ = "ctl00$ctl51$g_8e393016_c37f_48c2_9aa2_ab195a9c1128$ctl00$";
 const CACHE = path.join(__dirname, "cache.json");
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36";
 const MON = { januari:1, februari:2, maret:3, april:4, mei:5, juni:6, juli:7, agustus:8, september:9, oktober:10, november:11, desember:12 };
@@ -15,10 +17,10 @@ const load = () => { try { return JSON.parse(fs.readFileSync(CACHE, "utf8")); } 
 const save = c => fs.writeFileSync(CACHE, JSON.stringify(c));
 
 let cookies = {};
-async function req(body) {
+async function req(body, url = BI) {
   const headers = { "User-Agent": UA, Cookie: Object.entries(cookies).map(([k, v]) => k + "=" + v).join("; ") };
   if (body) headers["Content-Type"] = "application/x-www-form-urlencoded";
-  const r = await fetch(BI, { method: body ? "POST" : "GET", headers, body, signal: AbortSignal.timeout(120000) });
+  const r = await fetch(url, { method: body ? "POST" : "GET", headers, body, signal: AbortSignal.timeout(120000) });
   for (const c of r.headers.getSetCookie?.() || []) { const [kv] = c.split(";"); const i = kv.indexOf("="); cookies[kv.slice(0, i)] = kv.slice(i + 1); }
   if (!r.ok) throw new Error("bi.go.id responded " + r.status);
   return r.text();
@@ -40,6 +42,15 @@ function fields(h) {
 const parseRows = h => [...h.matchAll(/<td[^>]*>\s*([A-Z]{3})\s*<\/td>\s*<td[^>]*>\s*([\d.,]+)\s*<\/td>\s*<td[^>]*>\s*([\d.,]+)\s*<\/td>\s*<td[^>]*>\s*([\d.,]+)\s*<\/td>/g)]
   .map(m => [m[1], num(m[2]), num(m[3]), num(m[4])]);
 const parseNames = h => Object.fromEntries([...h.matchAll(/<td[^>]*>\s*([A-Z]{3})\s*<\/td>\s*<td[^>]*>\s*([A-Z][A-Z .\-']+?)\s*<\/td>/g)].map(m => [m[1], m[2]]));
+const parseJisdor = h => Object.fromEntries([...h.matchAll(/<td[^>]*>\s*(\d+) (\w+) (\d{4})\s*<\/td>\s*<td[^>]*>\s*Rp\s*([\d.,]+)\s*<\/td>/g)]
+  .filter(m => MON[m[2].toLowerCase()]).map(m => [`${m[3]}-${pad(MON[m[2].toLowerCase()])}-${pad(+m[1])}`, num(m[4])]));
+async function fetchJisdor(iso) { // iso = null: halaman awal (±10 hari kerja terakhir); iso = tanggal: cari tanggal itu
+  let h = await req(null, JISDOR);
+  if (!iso) return parseJisdor(h);
+  const dmy = `${iso.slice(8)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+  h = await req(new URLSearchParams({ ...fields(h), [PJ + "TextBoxFrom"]: dmy, [PJ + "TextBoxDateTo"]: dmy, [PJ + "HiddenFieldDateFrom"]: dmy, [PJ + "HiddenFieldDateTo"]: dmy, [PJ + "ButtonCari"]: "Cari" }).toString(), JISDOR);
+  return parseJisdor(h);
+}
 function parseUpdated(h) {
   const m = /Update Terakhir\s*(?:&nbsp;|\s)*(\d+)\s+(\w+)\s+(\d{4})/.exec(h);
   const mo = m && MON[m[2].toLowerCase()];
@@ -50,7 +61,8 @@ async function fetchLatest() {
   cookies = {};
   const h = await req(), rows = parseRows(h), date = parseUpdated(h);
   if (!rows.length || !date) throw new Error("Tabel kurs tidak ditemukan di halaman BI (struktur halaman mungkin berubah).");
-  const c = load(); c.updated = date; c.days[date] = rows; Object.assign(c.names, parseNames(h)); save(c);
+  const c = load(); c.updated = date; c.days[date] = rows; Object.assign(c.names, parseNames(h));
+  c.jisdor = { ...(c.jisdor || {}), ...await fetchJisdor(null) }; save(c);
   return c;
 }
 async function fetchDate(iso) {
@@ -59,14 +71,19 @@ async function fetchDate(iso) {
   const h0 = await req(), f = fields(h0), dmy = `${iso.slice(8)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
   const h = await req(new URLSearchParams({ ...f, [P + "txtTanggal"]: dmy, [P + "btnSearch2"]: "Cari", [P + "hidSourceID"]: P.replace(/\$/g, "_") + "btnSearch2" }).toString());
   const rows = parseRows(h), c = load();
-  if (rows.length) { c.days[iso] = rows; save(c); }
+  if (rows.length) { c.days[iso] = rows; c.jisdor = { ...(c.jisdor || {}), ...await fetchJisdor(c.jisdor && c.jisdor[iso] ? null : iso) }; save(c); }
   return { c, found: rows.length > 0 };
 }
 const view = (c, date) => {
   const dates = Object.keys(c.days).sort(), d = date && c.days[date] ? date : c.updated;
   const prevD = dates.filter(x => x < d).pop(), prev = prevD ? Object.fromEntries(c.days[prevD].map(r => [r[0], r])) : {};
   return { date: d, updated: c.updated, prevDate: prevD || null, names: c.names, dates,
-    rows: (c.days[d] || []).map(([k, n, j, b]) => ({ code: k, nilai: n, jual: j, beli: b, dJual: prev[k] ? j - prev[k][2] : null })) };
+    rows: (c.days[d] || []).map(([k, n, j, b]) => {
+      // Kurs tengah USD = nilai JISDOR (tanggal itu, atau JISDOR terakhir sebelum tanggal itu); lainnya (jual+beli)/2/nilai
+      let tengah = (j + b) / 2 / n, sumber = null;
+      if (k === "USD") { const jd = Object.keys(c.jisdor || {}).filter(x => x <= d).sort().pop(); if (jd) { tengah = c.jisdor[jd]; sumber = "JISDOR " + jd; } }
+      return { code: k, nilai: n, jual: j, beli: b, tengah, sumber, dJual: prev[k] ? j - prev[k][2] : null };
+    }) };
 };
 
 let busy = null;

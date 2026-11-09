@@ -14,6 +14,8 @@ Buka http://localhost:3000
 - Tombol **Refresh dari bi.go.id**: mengambil kurs terbaru langsung dari situs BI (10–60 detik).
 - **Cari tanggal**: kurs harian untuk tanggal tertentu (akhir pekan/libur: tidak ada data).
 - Kurs Tengah = (Kurs Jual + Kurs Beli) / 2 / Nilai (di tabel web dan kolom `kurs_tengah` di CSV).
+  **Khusus USD** memakai nilai JISDOR dari https://www.bi.go.id/id/statistik/informasi-kurs/jisdor/default.aspx
+  (tanggal yang sama, atau JISDOR terakhir sebelum tanggal itu). Kolom `sumber_tengah` di CSV menunjukkan sumbernya.
 - Filter mata uang, dan Δ Jual terhadap tanggal sebelumnya yang pernah diambil.
 - Data disimpan di `cache.json` (tidak masuk git).
 

@@ -16,14 +16,16 @@ from datetime import date, datetime, timedelta
 URL = "https://www.bi.go.id/id/statistik/informasi-kurs/transaksi-bi/Default.aspx"
 P = "ctl00$ctl51$g_6c89d4ad_107f_437d_bd54_8fda17b556bf$ctl00$"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+JISDOR_URL = "https://www.bi.go.id/id/statistik/informasi-kurs/jisdor/default.aspx"
+PJ = "ctl00$ctl51$g_8e393016_c37f_48c2_9aa2_ab195a9c1128$ctl00$"
 BULAN = {"januari": 1, "februari": 2, "maret": 3, "april": 4, "mei": 5, "juni": 6, "juli": 7,
          "agustus": 8, "september": 9, "oktober": 10, "november": 11, "desember": 12}
 
 
-def buka(data=None, retry=3):
+def buka(data=None, retry=3, url=None):
     jar = buka.jar
     op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
-    req = urllib.request.Request(URL, data=data, headers={"User-Agent": UA})
+    req = urllib.request.Request(url or URL, data=data, headers={"User-Agent": UA})
     for i in range(retry):
         try:
             return op.open(req, timeout=120).read().decode("utf-8", "replace")
@@ -83,6 +85,53 @@ def kurs_tanggal(f, d):
     return baris(buka(urllib.parse.urlencode(isian).encode()))
 
 
+def baris_jisdor(h):
+    out = {}
+    for tgl, nilai in re.findall(r"<td[^>]*>\s*(\d+ \w+ \d{4})\s*</td>\s*<td[^>]*>\s*Rp\s*([\d.,]+)\s*</td>", h):
+        t = tgl.split()
+        if t[1].lower() in BULAN:
+            out[date(int(t[2]), BULAN[t[1].lower()], int(t[0]))] = angka(nilai)
+    return out
+
+
+def ambil_jisdor(awal):
+    """Kurs JISDOR (USD/IDR) dari halaman JISDOR BI: {tanggal: nilai}.
+    Halaman awal memuat ~10 hari kerja terakhir; jika perlu lebih lama, cari rentang tanggal."""
+    h = buka(url=JISDOR_URL)
+    data = baris_jisdor(h)
+    if not data:
+        raise SystemExit("Tabel JISDOR tidak ditemukan di halaman BI (struktur halaman berubah?).")
+    if awal < min(data):
+        dari, sampai = awal.strftime("%d/%m/%Y"), date.today().strftime("%d/%m/%Y")
+        isian = form_fields(h)
+        isian.update({PJ + "TextBoxFrom": dari, PJ + "TextBoxDateTo": sampai, PJ + "HiddenFieldDateFrom": dari,
+                      PJ + "HiddenFieldDateTo": sampai, PJ + "ButtonCari": "Cari"})
+        h = buka(urllib.parse.urlencode(isian).encode(), url=JISDOR_URL)
+        hal = 1
+        while True:
+            data.update(baris_jisdor(h))
+            print(f"  JISDOR halaman {hal}: {len(data)} hari", flush=True)
+            links = re.findall(r"""href="javascript:__doPostBack\((?:'|&#39;)([^'&]*DataPagerData[^'&]*)(?:'|&#39;),(?:'|&#39;){2}\)"[^>]*>([^<]*)</a>""", h)
+            nxt = next((l for l in links if l[1].strip() == str(hal + 1)), None) or \
+                next((l for l in links if l[1].strip() == "..."), None)
+            if not nxt or hal > 80 or min(data) <= awal:
+                break
+            isian = form_fields(h)
+            isian.update({"__EVENTTARGET": html.unescape(nxt[0]), "__EVENTARGUMENT": ""})
+            h = buka(urllib.parse.urlencode(isian).encode(), url=JISDOR_URL)
+            hal += 1
+    return data
+
+
+def tengah_usd(jisdor, d):
+    """Kurs tengah USD = nilai JISDOR pada tanggal d, atau tanggal JISDOR terakhir sebelum d."""
+    ada = [t for t in jisdor if t <= d]
+    if not ada:
+        return None, None
+    t = max(ada)
+    return jisdor[t], t
+
+
 def main():
     ap = argparse.ArgumentParser(description="Ambil Kurs Transaksi BI (semua mata uang) ke CSV.")
     ap.add_argument("--dari", help="tanggal awal YYYY-MM-DD (default: kurs terbaru saja)")
@@ -104,7 +153,12 @@ def main():
     if awal > akhir:
         raise SystemExit("Tanggal awal harus sebelum tanggal akhir.")
 
-    hasil = []  # (tanggal, kode, nama, nilai, jual, beli)
+    jisdor = {}
+    if not filt or "USD" in filt:
+        print("Mengambil JISDOR (kurs tengah USD) ...", flush=True)
+        jisdor = ambil_jisdor(awal)
+
+    hasil = []  # (tanggal, kode, nama, nilai, jual, tengah, beli, sumber_tengah)
     d = awal
     while d <= akhir:
         if d.weekday() < 5 or d == terbaru:  # akhir pekan tidak ada kurs
@@ -114,25 +168,30 @@ def main():
                 rows = kurs_tanggal(f, d)
             rows = [r for r in rows if not filt or r[0] in filt]
             print(f"{d}  {len(rows):>2} mata uang" if rows else f"{d}  tidak ada data (libur)", flush=True)
-            hasil += [(d.isoformat(), k, nama.get(k, ""), n, j, b) for k, n, j, b in rows]
+            for k, n, j, b in rows:
+                tengah, sumber = round((j + b) / 2 / n, 4), "(jual+beli)/2/nilai"
+                if k == "USD":
+                    v, td = tengah_usd(jisdor, d)
+                    if v is not None:
+                        tengah, sumber = v, f"JISDOR {td.isoformat()}"
+                hasil.append((d.isoformat(), k, nama.get(k, ""), n, j, tengah, b, sumber))
         d += timedelta(days=1)
 
     if not hasil:
         raise SystemExit("Tidak ada data yang ditemukan.")
     with open(a.output, "w", newline="", encoding="utf-8-sig") as fh:  # utf-8-sig: langsung rapi di Excel
         w = csv.writer(fh)
-        w.writerow(["tanggal", "kode", "nama", "nilai", "kurs_jual", "kurs_tengah", "kurs_beli"])
-        for t, k, nm, v, j, b in hasil:  # kurs_tengah = (jual + beli) / 2 / nilai
-            w.writerow([t, k, nm, v, j, round((j + b) / 2 / v, 4), b])
+        w.writerow(["tanggal", "kode", "nama", "nilai", "kurs_jual", "kurs_tengah", "kurs_beli", "sumber_tengah"])
+        w.writerows(hasil)
     print(f"\nSelesai: {len(hasil)} baris disimpan ke {a.output}")
 
     # tampilkan ringkasan tanggal terakhir di layar
     tgl = hasil[-1][0]
     print(f"\nKurs {tgl}:")
     print(f"{'Kode':<5}{'Nilai':>8}{'Kurs Jual':>16}{'Kurs Tengah':>16}{'Kurs Beli':>16}")
-    for t, k, n, v, j, b in hasil:
+    for t, k, nm, v, j, tg, b, sumber in hasil:
         if t == tgl:
-            print(f"{k:<5}{v:>8,.0f}{j:>16,.2f}{(j + b) / 2 / v:>16,.2f}{b:>16,.2f}")
+            print(f"{k:<5}{v:>8,.0f}{j:>16,.2f}{tg:>16,.2f}{b:>16,.2f}" + ("   <- " + sumber if k == "USD" else ""))
 
 
 if __name__ == "__main__":

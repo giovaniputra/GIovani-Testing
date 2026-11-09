@@ -35,7 +35,7 @@
   </div>
   <div id="msg"></div>
   <table><thead><tr><th>Mata uang</th><th>Nilai</th><th>Kurs Jual</th><th>Kurs Tengah</th><th>Kurs Beli</th><th>Δ Jual</th></tr></thead><tbody id="rows"></tbody></table>
-  <p class="note">Sumber: <a href="https://www.bi.go.id/id/statistik/informasi-kurs/transaksi-bi/Default.aspx" target="_blank" rel="noopener">bi.go.id — Kurs Transaksi BI</a>. Δ Jual dibandingkan tanggal sebelumnya yang pernah diambil aplikasi ini. Kurs Tengah = (Kurs Jual + Kurs Beli) / 2 / Nilai. Refresh bisa memakan 10–60 detik.</p>
+  <p class="note">Sumber: <a href="https://www.bi.go.id/id/statistik/informasi-kurs/transaksi-bi/Default.aspx" target="_blank" rel="noopener">bi.go.id — Kurs Transaksi BI</a>. Δ Jual dibandingkan tanggal sebelumnya yang pernah diambil aplikasi ini. Kurs Tengah = (Kurs Jual + Kurs Beli) / 2 / Nilai; khusus USD memakai nilai JISDOR dari <a href="https://www.bi.go.id/id/statistik/informasi-kurs/jisdor/default.aspx" target="_blank" rel="noopener">halaman JISDOR</a>. Refresh bisa memakan 10–60 detik.</p>
 </main>
 <script>
 const $=id=>document.getElementById(id);let S=null;
@@ -47,7 +47,7 @@ function render(){
   $("sub").textContent="Kurs untuk "+fd(S.date)+(S.date!==S.updated?" (data terbaru di BI: "+fd(S.updated)+")":"");
   $("date").value=S.date;
   $("rows").innerHTML=S.rows.filter(r=>!q||r.code.includes(q)||(S.names[r.code]||"").includes(q)).map(r=>{
-    const d=r.dJual;return `<tr><td><b>${r.code}</b><small>${S.names[r.code]||""}</small></td><td>${n(r.nilai)}</td><td>${n(r.jual)}</td><td>${n((r.jual+r.beli)/2/r.nilai)}</td><td>${n(r.beli)}</td><td class="${d>0?"up":d<0?"down":""}">${d==null?"–":(d>0?"+":"")+n(d)}</td></tr>`}).join("");
+    const d=r.dJual;return `<tr><td><b>${r.code}</b><small>${S.names[r.code]||""}</small></td><td>${n(r.nilai)}</td><td>${n(r.jual)}</td><td>${n(r.tengah)}${r.sumber?`<small>${r.sumber}</small>`:""}</td><td>${n(r.beli)}</td><td class="${d>0?"up":d<0?"down":""}">${d==null?"–":(d>0?"+":"")+n(d)}</td></tr>`}).join("");
 }
 async function call(url,opt,btn){btn.disabled=true;try{const r=await fetch(url,opt),j=await r.json();if(!r.ok)throw new Error(j.error||r.status);return j}finally{btn.disabled=false}}
 $("refresh").onclick=async()=>{msg("Mengambil data terbaru dari bi.go.id…");

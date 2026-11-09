@@ -19,6 +19,12 @@ OVERDUE_DAYS = 30
 @lru_cache(maxsize=1)
 def load_master() -> dict:
     data = json.loads(MASTER_PATH.read_text(encoding="utf-8"))
+    demo = os.environ.get("DEMO_PHONE")  # nomor WA tester -> dipetakan ke toko demo, tanpa menyimpannya di repo
+    if demo:
+        code = os.environ.get("DEMO_CUSTOMER", "TK-001")
+        for c in data["customers"]:
+            if c["code"] == code:
+                c["phones"] = c["phones"] + [p.strip() for p in demo.split(",") if p.strip()]
     data["sku_by_code"] = {s["code"]: s for s in data["skus"]}
     return data
 

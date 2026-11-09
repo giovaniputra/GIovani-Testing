@@ -152,3 +152,32 @@ def test_webhook_signature(client, monkeypatch):
     sig = "sha256=" + hmac.new(b"s3cret", body, hashlib.sha256).hexdigest()
     good = client.post("/webhook", content=body, headers={"X-Hub-Signature-256": sig})
     assert good.status_code == 200
+
+
+# ---- Mode production & nomor demo ----
+def test_production_menutup_endpoint_debug_dan_menolak_tanpa_secret(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.delenv("WHATSAPP_APP_SECRET", raising=False)
+    assert client.get("/health").status_code == 200
+    assert client.post("/simulate", json={"phone": TOKO1, "text": "2 dus hit lavender"}).status_code == 404
+    assert client.get("/api/orders").status_code == 404
+    assert client.get("/").status_code == 404
+    body = json.dumps(wa_payload("wamid.p1", "2 dus hit lavender")).encode()
+    assert client.post("/webhook", content=body).status_code == 403  # tanpa secret -> ditolak
+
+
+def test_demo_phone_dipetakan_ke_toko_demo(monkeypatch):
+    monkeypatch.setenv("DEMO_PHONE", "081200000000")
+    engine.load_master.cache_clear()
+    try:
+        assert engine.find_customer("6281200000000")["code"] == "TK-001"
+    finally:
+        monkeypatch.delenv("DEMO_PHONE")
+        engine.load_master.cache_clear()
+
+
+def test_production_wajib_verify_token(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.delenv("WHATSAPP_VERIFY_TOKEN", raising=False)
+    r = client.get("/webhook", params={"hub.mode": "subscribe", "hub.verify_token": "dev-verify-token", "hub.challenge": "1"})
+    assert r.status_code == 403

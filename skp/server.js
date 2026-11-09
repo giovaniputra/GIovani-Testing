@@ -4,12 +4,11 @@ const src = require('./source');
 const db = new DatabaseSync(process.env.SKP_DB || path.join(__dirname, 'skp.db'));
 db.exec(`CREATE TABLE IF NOT EXISTS skp_source(PlanID INTEGER PRIMARY KEY,NIK,Nama,Departemen,Periode,Sasaran,Target REAL,Satuan,Bobot REAL);
 CREATE TABLE IF NOT EXISTS skp_collection(PlanID INTEGER PRIMARY KEY,Realisasi REAL,Catatan TEXT,Status TEXT NOT NULL DEFAULT 'Belum',UpdatedAt TEXT);`);
-function sync() {
+async function sync() {
   const ins = db.prepare('INSERT OR REPLACE INTO skp_source VALUES(?,?,?,?,?,?,?,?,?)'); let n = 0;
-  for (const r of src.fetchSourceRows()) { ins.run(r.PlanID,r.NIK,r.Nama,r.Departemen,r.Periode,r.Sasaran,r.Target,r.Satuan,r.Bobot); n++; }
+  for (const r of await src.fetchSourceRows()) { ins.run(r.PlanID,r.NIK,r.Nama,r.Departemen,r.Periode,r.Sasaran,r.Target,r.Satuan,r.Bobot); n++; }
   return n;
 }
-if (!db.prepare('SELECT 1 FROM skp_source LIMIT 1').get()) sync();
 const SELECT = `SELECT s.*,COALESCE(c.Status,'Belum') Status,c.Realisasi,c.Catatan,c.UpdatedAt,
  CASE WHEN c.Realisasi IS NOT NULL AND s.Target>0 THEN ROUND(c.Realisasi*100.0/s.Target,1) END Capaian
  FROM skp_source s LEFT JOIN skp_collection c USING(PlanID)`;
@@ -24,6 +23,8 @@ function list(q) {
 const send = (res, code, body, type = 'application/json') => { res.writeHead(code, { 'Content-Type': type }); res.end(type === 'application/json' ? JSON.stringify(body) : body); };
 const body = req => new Promise(r => { let d = ''; req.on('data', c => d += c); req.on('end', () => { try { r(JSON.parse(d || '{}')); } catch { r(null); } }); });
 const csvCell = v => { v = v == null ? '' : String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+async function main() {
+if (!db.prepare('SELECT 1 FROM skp_source LIMIT 1').get()) await sync();
 http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x'), q = Object.fromEntries(u.searchParams);
   try {
@@ -35,7 +36,7 @@ http.createServer(async (req, res) => {
       const rows = list(q), by = s => rows.filter(r => r.Status === s).length;
       return send(res, 200, { total: rows.length, belum: by('Belum'), draft: by('Draft'), submitted: by('Submitted') });
     }
-    if (u.pathname === '/api/sync' && req.method === 'POST') return send(res, 200, { synced: sync() });
+    if (u.pathname === '/api/sync' && req.method === 'POST') return send(res, 200, { synced: await sync() });
     if (u.pathname === '/api/export.csv') {
       const cols = ['PlanID','NIK','Nama','Departemen','Periode','Sasaran','Target','Satuan','Bobot','Realisasi','Capaian','Status','Catatan','UpdatedAt'];
       const out = [cols.join(',')].concat(list(q).map(r => cols.map(c => csvCell(r[c])).join(',')));
@@ -62,3 +63,5 @@ http.createServer(async (req, res) => {
     send(res, 404, { error: 'not found' });
   } catch (e) { console.error(e); send(res, 500, { error: 'server error' }); }
 }).listen(process.env.PORT || 3000, () => console.log('SKP Collection (' + src.mode + ') http://localhost:' + (process.env.PORT || 3000)));
+}
+main().catch(e => { console.error('Gagal start:', e.message); process.exit(1); });

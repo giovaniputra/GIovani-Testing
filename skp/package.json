@@ -1,1 +1,15 @@
-{"name":"skp-collection","version":"0.1.0","private":true,"scripts":{"start":"node --no-warnings server.js"},"engines":{"node":">=22.5"}}
+{
+  "name": "skp-collection",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "node --no-warnings --env-file-if-exists=.env server.js",
+    "inspect": "node --no-warnings inspect.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "mssql": "^11.0.1"
+  }
+}

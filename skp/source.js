@@ -15,4 +15,5 @@ function fetchSourceRows() {
   });
   return rows;
 }
-module.exports = { fetchSourceRows, mode: 'SIMULASI' };
+if (process.env.SKP_SOURCE === 'mssql') module.exports = require('./source-mssql');
+else module.exports = { fetchSourceRows: async () => fetchSourceRows(), mode: 'SIMULASI' };

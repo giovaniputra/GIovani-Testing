@@ -64,7 +64,7 @@ async def receive(request: Request):
             for msg in change.get("value", {}).get("messages", []):
                 mtype = msg.get("type", "text")
                 text = msg.get("text", {}).get("body") if mtype == "text" else None
-                results.append(service.handle_incoming(msg["from"], text, msg.get("id"), mtype))
+                results.append(service.handle_incoming(msg["from"], text, msg.get("id"), mtype, msg.get("order")))
     return {"processed": len(results)}  # WA hanya butuh 200 cepat
 
 

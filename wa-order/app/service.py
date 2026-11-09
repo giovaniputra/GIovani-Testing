@@ -9,6 +9,7 @@ from .parser import parse_message
 CONFIRM = {"ok", "oke", "okey", "ya", "iya", "yes", "betul", "benar", "sip", "siap", "setuju", "lanjut"}
 CHANGE = {"ubah", "salah", "revisi", "ganti", "tidak", "gak", "nggak"}
 CANCEL = {"batal", "cancel", "batalkan"}
+CATALOG_RE = re.compile(r"\b(katalog|catalog|daftar produk|list produk)\b", re.I)
 
 
 def _word(text: str) -> str:
@@ -38,11 +39,18 @@ def _finalize(order_id: int, phone: str, customer: dict | None, items: list[dict
 
 
 def handle_incoming(phone: str, text: str | None, wa_id: str | None = None,
-                    msg_type: str = "text") -> dict:
+                    msg_type: str = "text", order: dict | None = None) -> dict:
     phone = engine.norm_phone(phone)
     if store.seen_message(wa_id, phone):
         return {"status": "duplicate"}
     customer = engine.find_customer(phone)
+
+    if msg_type == "order":  # keranjang dari katalog WhatsApp: sudah terstruktur, tanpa parsing teks
+        pending = store.pending_order(phone)
+        if pending:
+            store.update_order(pending["id"], status="superseded")
+        items = engine.build_items_from_cart(customer, (order or {}).get("product_items", []))
+        return _finalize(0, phone, customer, items, None, raw_text=f"[keranjang katalog] {len(items)} item")
 
     if msg_type != "text" or not text:  # voice note / foto: belum diproses otomatis -> tim
         oid = store.save_order(phone, customer["code"] if customer else None, f"[{msg_type}]",
@@ -51,6 +59,14 @@ def handle_incoming(phone: str, text: str | None, wa_id: str | None = None,
         reply = replier.received_text(customer)
         replier.send(phone, reply, oid)
         return {"order_id": oid, "status": "needs_review", "reply": reply}
+
+    if CATALOG_RE.search(text) and not parse_message(text).lines:  # "katalog" / "minta daftar produk"
+        if customer is None:
+            reply = replier.unknown_text()
+            replier.send(phone, reply)
+            return {"status": "unknown_customer", "reply": reply}
+        _, preview = replier.send_catalog(phone, customer)
+        return {"status": "catalog_sent", "reply": preview}
 
     pending = store.pending_order(phone)
     word = _word(text)

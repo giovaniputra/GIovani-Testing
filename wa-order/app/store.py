@@ -28,8 +28,12 @@ def init_db() -> None:
             total REAL, confidence REAL, status TEXT);
         CREATE TABLE IF NOT EXISTS outbox(
             id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT, phone TEXT, body TEXT,
-            order_id INTEGER, sent INTEGER DEFAULT 0, error TEXT);
+            order_id INTEGER, sent INTEGER DEFAULT 0, error TEXT, payload TEXT);
         """)
+        try:  # DB lama belum punya kolom payload
+            c.execute("ALTER TABLE outbox ADD COLUMN payload TEXT")
+        except sqlite3.OperationalError:
+            pass
 
 
 def now() -> str:
@@ -95,10 +99,10 @@ def list_orders(limit: int = 50) -> list[dict]:
         return [_row(r) for r in c.execute("SELECT * FROM orders ORDER BY id DESC LIMIT ?", (limit,))]
 
 
-def add_outbox(phone: str, body: str, order_id: int | None) -> int:
+def add_outbox(phone: str, body: str, order_id: int | None, payload: dict | None = None) -> int:
     with _conn() as c:
-        return c.execute("INSERT INTO outbox(created_at,phone,body,order_id) VALUES (?,?,?,?)",
-                         (now(), phone, body, order_id)).lastrowid
+        return c.execute("INSERT INTO outbox(created_at,phone,body,order_id,payload) VALUES (?,?,?,?,?)",
+                         (now(), phone, body, order_id, json.dumps(payload) if payload else None)).lastrowid
 
 
 def mark_outbox(outbox_id: int, sent: bool, error: str | None = None) -> None:

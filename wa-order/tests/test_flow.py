@@ -181,3 +181,60 @@ def test_production_wajib_verify_token(client, monkeypatch):
     monkeypatch.delenv("WHATSAPP_VERIFY_TOKEN", raising=False)
     r = client.get("/webhook", params={"hub.mode": "subscribe", "hub.verify_token": "dev-verify-token", "hub.challenge": "1"})
     assert r.status_code == 403
+
+
+# ---- Katalog WhatsApp (keranjang) ----
+def cart_payload(wa_id, items, frm=TOKO1):
+    msg = {"from": frm, "id": wa_id, "type": "order",
+           "order": {"catalog_id": "CAT1", "product_items": items}}
+    return {"entry": [{"changes": [{"value": {"messages": [msg]}}]}]}
+
+
+def test_keranjang_katalog_jadi_order_terstruktur(client):
+    items = [{"product_retailer_id": "HIT-AERO-LAV-600", "quantity": 2, "item_price": 456000, "currency": "IDR"},
+             {"product_retailer_id": "STL-GEL-ORG", "quantity": 1, "item_price": 372000, "currency": "IDR"}]
+    client.post("/webhook", json=cart_payload("wamid.c1", items))
+    o = client.get("/api/orders").json()[0]
+    assert o["status"] == "awaiting_confirmation"
+    assert [(i["sku"], i["qty"], i["unit_final"]) for i in o["items"]] == [
+        ("HIT-AERO-LAV-600", 2, "dus"), ("STL-GEL-ORG", 1, "dus")]
+    assert o["total"] == 1258320  # harga dihitung sistem (diskon toko), bukan item_price dari WA
+    assert "Balas *OK*" in client.get("/api/outbox").json()[0]["body"]
+    assert sim(client, TOKO1, "ok")["status"] == "confirmed"
+
+
+def test_keranjang_sku_tak_dikenal_dan_di_luar_assortment(client):
+    client.post("/webhook", json=cart_payload("wamid.c2", [{"product_retailer_id": "XXX-999", "quantity": 1}]))
+    o = client.get("/api/orders").json()[0]
+    assert o["status"] == "needs_review" and any(i["code"] == "unmatched" for i in o["issues"])
+    # TK-002 hanya boleh membeli sebagian produk; Expert Hair Color tidak termasuk
+    client.post("/webhook", json=cart_payload("wamid.c3", [{"product_retailer_id": "EXP-HC-HITAM", "quantity": 1}], frm=TOKO2))
+    o = client.get("/api/orders").json()[0]
+    assert any(i["code"] == "not_in_assortment" for i in o["issues"])
+
+
+def test_minta_katalog_dikirim_per_toko(client):
+    r = sim(client, TOKO1, "kak minta katalog")
+    assert r["status"] == "catalog_sent"
+    msg = client.get("/api/outbox").json()[0]
+    payload = json.loads(msg["payload"])
+    assert payload["interactive"]["type"] == "product_list"
+    ids = [i["product_retailer_id"] for s in payload["interactive"]["action"]["sections"] for i in s["product_items"]]
+    assert len(ids) == 8
+    # TK-002: hanya 4 produk
+    sim(client, TOKO2, "katalog")
+    ids2 = [i["product_retailer_id"] for s in json.loads(client.get("/api/outbox").json()[0]["payload"])["interactive"]["action"]["sections"] for i in s["product_items"]]
+    assert sorted(ids2) == sorted(["GNO1-SOAP-100", "MITU-WIPE-50", "STL-GEL-ORG", "HIT-AERO-LAV-600"])
+
+
+def test_katalog_bukan_order_bila_ada_item(client):
+    assert sim(client, TOKO1, "2 dus hit lavender dari katalog kemarin")["status"] == "awaiting_confirmation"
+
+
+def test_feed_katalog_meta():
+    from app.catalog_feed import COLUMNS, feed_rows
+    rows = feed_rows("https://x.id/p", "https://x.id/i")
+    assert len(rows) == 8 and set(rows[0]) == set(COLUMNS)
+    lav = next(r for r in rows if r["id"] == "HIT-AERO-LAV-600")
+    assert lav["price"] == "456000 IDR" and lav["image_link"].endswith("HIT-AERO-LAV-600.jpg")
+    assert lav["availability"] == "in stock"

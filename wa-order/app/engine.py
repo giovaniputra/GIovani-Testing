@@ -44,13 +44,15 @@ def find_customer(phone: str) -> dict | None:
 
 
 def _tokens(s: str) -> list[str]:
-    return re.sub(r"[^\w\s]", " ", s.lower().replace(".", "")).split()
+    t = re.sub(r"[^\w\s]", " ", s.lower().replace(".", ""))
+    return re.sub(r"(?<=\d)(?=[a-z])|(?<=[a-z])(?=\d)", " ", t).split()
 
 
-def _score(prod: str, alias: str) -> float:
+def _score(prod: str, alias: str) -> tuple[float, frozenset]:
+    """Skor 0-1 dan himpunan kata alias yang dipakai (untuk aturan dominasi)."""
     p, a = _tokens(prod), _tokens(alias)
     if not p or not a:
-        return 0.0
+        return 0.0, frozenset()
     ps, as_ = set(p), set(a)
     if as_ <= ps:                                  # semua kata alias ada di teks toko
         s = 0.85 + 0.15 * len(as_) / len(ps)
@@ -58,7 +60,24 @@ def _score(prod: str, alias: str) -> float:
         s = 0.5 + 0.4 * len(ps) / len(as_)
     else:
         s = 0.0
-    return max(s, difflib.SequenceMatcher(None, " ".join(p), " ".join(a)).ratio())
+    name_match = s > 0                             # nama cocok lewat kata, bukan sekadar mirip huruf
+    s = max(s, difflib.SequenceMatcher(None, " ".join(p), " ".join(a)).ratio())
+    np_, na = {t for t in ps if t.isdigit()}, {t for t in as_ if t.isdigit()}
+    if np_ and na:                                 # ukuran/isi disebut: beda = penalti, cocok = bonus (hanya jika nama cocok)
+        if not np_ & na:
+            s -= 0.25
+        elif name_match:
+            s = min(1.0, s + 0.15)
+    return s, frozenset(as_)
+
+
+def _apply_synonyms(text: str) -> str:
+    t = " ".join(_tokens(text))
+    for phrase, repl in load_master().get("synonyms", {}).items():
+        ph = " ".join(_tokens(phrase))
+        if ph and re.search(rf"(?<!\w){re.escape(ph)}(?!\w)", t):
+            t = re.sub(rf"(?<!\w){re.escape(ph)}(?!\w)", " ".join(_tokens(repl)), t)
+    return re.sub(r"\s+", " ", t).strip()
 
 
 def match_sku(product_text: str, customer: dict | None) -> dict:
@@ -68,19 +87,49 @@ def match_sku(product_text: str, customer: dict | None) -> dict:
         for alias, code in customer.get("aliases", {}).items():
             if _tokens(alias) == _tokens(product_text):
                 return {"status": "matched", "sku": code, "score": 1.0, "candidates": []}
-    scored: dict[str, float] = {}
+    product_text = _apply_synonyms(product_text)  # istilah sehari-hari ("lem tikus") -> nama produk
+    scored: dict[str, tuple[float, frozenset]] = {}
     for sku in master["skus"]:
-        best = max(_score(product_text, a) for a in sku["aliases"] + [sku["name"]])
-        if best >= MATCH_MIN:
+        best = max((_score(product_text, a) for a in sku["aliases"] + [sku["name"]]), key=lambda x: x[0])
+        if best[0] >= MATCH_MIN:
             scored[sku["code"]] = best
-    ranked = sorted(scored.items(), key=lambda kv: kv[1], reverse=True)
+    ranked = sorted(scored.items(), key=lambda kv: kv[1][0], reverse=True)
     if not ranked:
         return {"status": "unmatched", "sku": None, "score": 0.0, "candidates": []}
-    top, second = ranked[0], ranked[1] if len(ranked) > 1 else (None, 0.0)
-    if top[1] >= MATCH_OK and top[1] - second[1] >= MATCH_MARGIN:
-        return {"status": "matched", "sku": top[0], "score": round(top[1], 2), "candidates": []}
-    return {"status": "ambiguous", "sku": None, "score": round(top[1], 2),
+    (top_code, (top, top_tok)) = ranked[0]
+    second, second_tok = (ranked[1][1] if len(ranked) > 1 else (0.0, frozenset()))
+    clear = top - second >= MATCH_MARGIN or (top_tok > second_tok and top - second > 0)  # alias lebih spesifik menang
+    if (top >= MATCH_OK and clear) or (len(ranked) == 1 and top >= 0.6):  # satu-satunya kandidat; toko tetap melihat nama lengkap di konfirmasi
+        return {"status": "matched", "sku": top_code, "score": round(top, 2), "candidates": []}
+    return {"status": "ambiguous", "sku": None, "score": round(top, 2),
             "candidates": [c for c, _ in ranked[:3]]}
+
+
+def allowed_skus(customer: dict | None) -> list[dict]:
+    """Produk yang boleh dibeli/ditampilkan untuk toko (assortment). Kosong = semua produk."""
+    codes = (customer or {}).get("catalog_skus")
+    return [s for s in load_master()["skus"] if not codes or s["code"] in codes]
+
+
+def build_items_from_cart(customer: dict | None, product_items: list[dict]) -> list[dict]:
+    """Keranjang katalog WhatsApp -> item order. product_retailer_id = kode SKU, atau 'SKU:satuan'."""
+    skus = load_master()["sku_by_code"]
+    items: list[dict] = []
+    for p in product_items:
+        rid = str(p.get("product_retailer_id", "")).strip()
+        code, _, unit = rid.partition(":")
+        try:
+            qty = int(p.get("quantity") or 0)
+        except (TypeError, ValueError):
+            qty = 0
+        sku = skus.get(code)
+        base = {"raw": f"[keranjang] {rid}", "qty": qty, "source": "cart", "candidates": []}
+        if sku is None:
+            items.append({**base, "unit": None, "product_text": rid, "status": "unmatched", "sku": None, "score": 0.0})
+        else:
+            items.append({**base, "unit": unit or sku["default_unit"], "product_text": sku["name"],
+                          "status": "matched", "sku": code, "score": 1.0})
+    return items
 
 
 def build_items(customer: dict | None, parsed: ParseResult) -> list[dict]:
@@ -124,6 +173,10 @@ def validate(customer: dict | None, items: list[dict], unparsed: list[str] | Non
             continue
         sku = master["sku_by_code"][it["sku"]]
         it["name"] = sku["name"]
+        allowed = (customer or {}).get("catalog_skus")
+        if allowed and it["sku"] not in allowed:
+            issues.append({"code": "not_in_assortment", "severity": "internal",
+                           "message": f"{sku['name']}: bukan produk yang tersedia untuk toko ini"})
         unit = it["unit"] or sku["default_unit"]
         if not it["unit"]:
             issues.append({"code": "unit_assumed", "severity": "info",
@@ -136,12 +189,17 @@ def validate(customer: dict | None, items: list[dict], unparsed: list[str] | Non
         it["unit_final"] = unit
         it["qty_pcs"] = it["qty"] * sku["units"][unit]
         disc = (customer or {}).get("discount_pct", 0)
-        it["unit_price"] = round(sku["price_pcs"] * sku["units"][unit] * (1 - disc / 100))
-        it["subtotal"] = it["unit_price"] * it["qty"]
-        total += it["subtotal"]
+        if sku.get("price_pcs") is None:  # master belum punya harga: total tidak dihitung
+            it["unit_price"] = it["subtotal"] = None
+            issues.append({"code": "price_missing", "severity": "info",
+                           "message": f"{sku['name']}: harga belum ada di master"})
+        else:
+            it["unit_price"] = round(sku["price_pcs"] * sku["units"][unit] * (1 - disc / 100))
+            it["subtotal"] = it["unit_price"] * it["qty"]
+            total += it["subtotal"]
         if it["qty"] <= 0:
             issues.append({"code": "bad_qty", "severity": "internal", "message": f"{sku['name']}: qty tidak valid"})
-        if it["qty_pcs"] > sku["stock_pcs"]:
+        if sku.get("stock_pcs") is not None and it["qty_pcs"] > sku["stock_pcs"]:
             issues.append({"code": "low_stock", "severity": "internal",
                            "message": f"{sku['name']}: diminta {it['qty_pcs']} pcs, stok {sku['stock_pcs']} pcs"})
         avg = (customer or {}).get("history_avg_pcs", {}).get(it["sku"])

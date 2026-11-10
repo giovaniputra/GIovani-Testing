@@ -23,4 +23,4 @@ petakan kolom asli ke bentuk yang sama. Kredensial lewat environment/.env, janga
 Tanpa `.env` aplikasi berjalan dalam mode simulasi.
 
 ## Format SKP ID
-`SKP-MMYY-NNNN`, contoh `SKP-1126-0001`. MMYY = bulan dan tahun saat baris pertama kali masuk ke aplikasi (sinkron), NNNN = nomor urut 4 digit yang mulai dari 0001 lagi tiap bulan. ID tidak berubah pada sinkron berikutnya, unik, dan bisa dicari serta diekspor.
+`SKPMMYYNNNNNNN`, contoh `SKP11260000001`. MMYY = bulan dan tahun saat baris pertama kali masuk ke aplikasi (sinkron), NNNNNNN = nomor urut 7 digit yang mulai dari 0000001 lagi tiap bulan. ID tidak berubah pada sinkron berikutnya, unik, dan bisa dicari serta diekspor. Database lama berformat `SKP-MMYY-NNNN` otomatis dikonversi.

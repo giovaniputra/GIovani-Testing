@@ -4,14 +4,15 @@ const src = require('./source');
 const db = new DatabaseSync(process.env.SKP_DB || path.join(__dirname, 'skp.db'));
 db.exec(`CREATE TABLE IF NOT EXISTS skp_source(PlanID INTEGER PRIMARY KEY,NIK,Nama,Departemen,Periode,Sasaran,Target REAL,Satuan,Bobot REAL);
 CREATE TABLE IF NOT EXISTS skp_collection(PlanID INTEGER PRIMARY KEY,Realisasi REAL,Catatan TEXT,Status TEXT NOT NULL DEFAULT 'Belum',UpdatedAt TEXT);`);
-// Format SKP ID: SKP-MMYY-NNNN (MMYY = bulan/tahun saat baris pertama masuk, NNNN = nomor urut, reset tiap bulan).
+// Format SKP ID: SKPMMYYNNNNNNN (MMYY = bulan/tahun saat baris pertama masuk, N = nomor urut 7 digit, reset tiap bulan).
 if (!db.prepare("SELECT 1 FROM pragma_table_info('skp_source') WHERE name='SkpID'").get()) db.exec('ALTER TABLE skp_source ADD COLUMN SkpID TEXT');
+db.exec("UPDATE skp_source SET SkpID='SKP'||SUBSTR(SkpID,5,4)||printf('%07d',CAST(SUBSTR(SkpID,10) AS INTEGER)) WHERE SkpID LIKE 'SKP-%'"); // migrasi format lama
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_skpid ON skp_source(SkpID)');
 function nextSkpId(prefix) {
   const r = db.prepare('SELECT MAX(CAST(SUBSTR(SkpID, ?) AS INTEGER)) m FROM skp_source WHERE SkpID LIKE ?').get(prefix.length + 1, prefix + '%');
-  return prefix + String((r.m || 0) + 1).padStart(4, '0');
+  return prefix + String((r.m || 0) + 1).padStart(7, '0');
 }
-function newPrefix(d = new Date()) { return 'SKP-' + String(d.getMonth() + 1).padStart(2, '0') + String(d.getFullYear()).slice(-2) + '-'; }
+function newPrefix(d = new Date()) { return 'SKP' + String(d.getMonth() + 1).padStart(2, '0') + String(d.getFullYear()).slice(-2); }
 async function sync() {
   const rows = await src.fetchSourceRows(); let n = 0, added = 0;
   const upd = db.prepare('UPDATE skp_source SET NIK=?,Nama=?,Departemen=?,Periode=?,Sasaran=?,Target=?,Satuan=?,Bobot=? WHERE PlanID=?');

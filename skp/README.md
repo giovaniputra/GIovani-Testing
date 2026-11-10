@@ -21,3 +21,6 @@ petakan kolom asli ke bentuk yang sama. Kredensial lewat environment/.env, janga
     npm run inspect             # lihat kolom asli TBAnaplansys20, lalu sesuaikan MAP di source-mssql.js
     npm start                   # buka http://localhost:3000, klik "Sinkron sumber"
 Tanpa `.env` aplikasi berjalan dalam mode simulasi.
+
+## Format SKP ID
+`SKP-MMYY-NNNN`, contoh `SKP-1126-0001`. MMYY = bulan dan tahun saat baris pertama kali masuk ke aplikasi (sinkron), NNNN = nomor urut 4 digit yang mulai dari 0001 lagi tiap bulan. ID tidak berubah pada sinkron berikutnya, unik, dan bisa dicari serta diekspor.

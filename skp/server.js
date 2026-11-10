@@ -4,10 +4,32 @@ const src = require('./source');
 const db = new DatabaseSync(process.env.SKP_DB || path.join(__dirname, 'skp.db'));
 db.exec(`CREATE TABLE IF NOT EXISTS skp_source(PlanID INTEGER PRIMARY KEY,NIK,Nama,Departemen,Periode,Sasaran,Target REAL,Satuan,Bobot REAL);
 CREATE TABLE IF NOT EXISTS skp_collection(PlanID INTEGER PRIMARY KEY,Realisasi REAL,Catatan TEXT,Status TEXT NOT NULL DEFAULT 'Belum',UpdatedAt TEXT);`);
+// Format SKP ID: SKP-MMYY-NNNN (MMYY = bulan/tahun saat baris pertama masuk, NNNN = nomor urut, reset tiap bulan).
+if (!db.prepare("SELECT 1 FROM pragma_table_info('skp_source') WHERE name='SkpID'").get()) db.exec('ALTER TABLE skp_source ADD COLUMN SkpID TEXT');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_skpid ON skp_source(SkpID)');
+function nextSkpId(prefix) {
+  const r = db.prepare('SELECT MAX(CAST(SUBSTR(SkpID, ?) AS INTEGER)) m FROM skp_source WHERE SkpID LIKE ?').get(prefix.length + 1, prefix + '%');
+  return prefix + String((r.m || 0) + 1).padStart(4, '0');
+}
+function newPrefix(d = new Date()) { return 'SKP-' + String(d.getMonth() + 1).padStart(2, '0') + String(d.getFullYear()).slice(-2) + '-'; }
 async function sync() {
-  const ins = db.prepare('INSERT OR REPLACE INTO skp_source VALUES(?,?,?,?,?,?,?,?,?)'); let n = 0;
-  for (const r of await src.fetchSourceRows()) { ins.run(r.PlanID,r.NIK,r.Nama,r.Departemen,r.Periode,r.Sasaran,r.Target,r.Satuan,r.Bobot); n++; }
-  return n;
+  const rows = await src.fetchSourceRows(); let n = 0, added = 0;
+  const upd = db.prepare('UPDATE skp_source SET NIK=?,Nama=?,Departemen=?,Periode=?,Sasaran=?,Target=?,Satuan=?,Bobot=? WHERE PlanID=?');
+  const ins = db.prepare('INSERT INTO skp_source(PlanID,NIK,Nama,Departemen,Periode,Sasaran,Target,Satuan,Bobot,SkpID) VALUES(?,?,?,?,?,?,?,?,?,?)');
+  const has = db.prepare('SELECT 1 FROM skp_source WHERE PlanID=?');
+  db.exec('BEGIN');
+  try {
+    for (const r of rows) {
+      n++;
+      if (has.get(r.PlanID)) upd.run(r.NIK,r.Nama,r.Departemen,r.Periode,r.Sasaran,r.Target,r.Satuan,r.Bobot,r.PlanID);
+      else { ins.run(r.PlanID,r.NIK,r.Nama,r.Departemen,r.Periode,r.Sasaran,r.Target,r.Satuan,r.Bobot,nextSkpId(newPrefix())); added++; }
+    }
+    // baris lama tanpa SkpID (dari versi sebelumnya) diberi ID
+    for (const r of db.prepare('SELECT PlanID FROM skp_source WHERE SkpID IS NULL ORDER BY PlanID').all())
+      db.prepare('UPDATE skp_source SET SkpID=? WHERE PlanID=?').run(nextSkpId(newPrefix()), r.PlanID);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  return { synced: n, baru: added };
 }
 const SELECT = `SELECT s.*,COALESCE(c.Status,'Belum') Status,c.Realisasi,c.Catatan,c.UpdatedAt,
  CASE WHEN c.Realisasi IS NOT NULL AND s.Target>0 THEN ROUND(c.Realisasi*100.0/s.Target,1) END Capaian
@@ -17,8 +39,8 @@ function list(q) {
   if (q.periode) { w.push('s.Periode=?'); p.push(q.periode); }
   if (q.dept) { w.push('s.Departemen=?'); p.push(q.dept); }
   if (q.status) { w.push("COALESCE(c.Status,'Belum')=?"); p.push(q.status); }
-  if (q.q) { w.push('(s.Nama LIKE ? OR s.NIK LIKE ? OR s.Sasaran LIKE ?)'); p.push(...Array(3).fill('%' + q.q + '%')); }
-  return db.prepare(SELECT + (w.length ? ' WHERE ' + w.join(' AND ') : '') + ' ORDER BY s.Nama,s.Periode,s.PlanID').all(...p);
+  if (q.q) { w.push('(s.Nama LIKE ? OR s.NIK LIKE ? OR s.Sasaran LIKE ? OR s.SkpID LIKE ?)'); p.push(...Array(4).fill('%' + q.q + '%')); }
+  return db.prepare(SELECT + (w.length ? ' WHERE ' + w.join(' AND ') : '') + ' ORDER BY s.SkpID').all(...p);
 }
 const send = (res, code, body, type = 'application/json') => { res.writeHead(code, { 'Content-Type': type }); res.end(type === 'application/json' ? JSON.stringify(body) : body); };
 const body = req => new Promise(r => { let d = ''; req.on('data', c => d += c); req.on('end', () => { try { r(JSON.parse(d || '{}')); } catch { r(null); } }); });
@@ -36,9 +58,9 @@ http.createServer(async (req, res) => {
       const rows = list(q), by = s => rows.filter(r => r.Status === s).length;
       return send(res, 200, { total: rows.length, belum: by('Belum'), draft: by('Draft'), submitted: by('Submitted') });
     }
-    if (u.pathname === '/api/sync' && req.method === 'POST') return send(res, 200, { synced: await sync() });
+    if (u.pathname === '/api/sync' && req.method === 'POST') return send(res, 200, await sync());
     if (u.pathname === '/api/export.csv') {
-      const cols = ['PlanID','NIK','Nama','Departemen','Periode','Sasaran','Target','Satuan','Bobot','Realisasi','Capaian','Status','Catatan','UpdatedAt'];
+      const cols = ['SkpID','PlanID','NIK','Nama','Departemen','Periode','Sasaran','Target','Satuan','Bobot','Realisasi','Capaian','Status','Catatan','UpdatedAt'];
       const out = [cols.join(',')].concat(list(q).map(r => cols.map(c => csvCell(r[c])).join(',')));
       res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="skp-collection.csv"' });
       return res.end('﻿' + out.join('\n'));
